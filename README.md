@@ -2,6 +2,11 @@
 
 Build an AI shopping agent that asks useful follow-up questions and recommends the customer's hidden target product within at most 10 turns.
 
+Project documentation:
+
+- Quick pipeline and technology summary: [`docs/pipeline-summary.md`](docs/pipeline-summary.md)
+- Full architecture, module boundaries, and five-person workstream map: [`docs/architecture.md`](docs/architecture.md)
+
 ## What You Receive
 
 - A frozen catalog of 50,000 products from the `Clothing_Shoes_and_Jewelry` category of Amazon Reviews 2023.
