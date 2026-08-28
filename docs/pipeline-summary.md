@@ -2,117 +2,94 @@
 
 ## Goal
 
-Find the exact hidden catalog `parent_asin` in the returned Top 10, at the highest possible rank and on the earliest possible turn. The Agent has at most 10 turns and should normally recommend up to 10 valid products on every turn, including when it asks a clarification.
+Find the exact hidden catalog `parent_asin` in the Top 10, at the highest rank and earliest turn possible. Every usable turn returns up to ten valid recommendations; turns 1–9 normally also ask one informative question.
 
-## Pipeline in one view
+## Pipeline
 
 ```text
-Frozen 50k-product JSONL catalog
-    -> validate and normalize without inventing missing values
-    -> build immutable in-memory product and search indexes
+50k-product JSONL catalog
+    -> validate ASINs and checksum
+    -> Unicode normalization without inventing missing values
+    -> SQLite FTS5 + category/attribute inverted indexes
 
 reset(profile)
-    -> create isolated SessionState with profile as soft evidence
+    -> immutable soft Customer Profile
+    -> isolated SessionState
 
 respond(message)
-    -> extract typed constraints, exclusions, corrections, and subjective needs
-    -> apply deterministic state updates and Intent Override replacement
-    -> estimate decision stage and continuous focus_probability
-    -> run title FTS + field FTS + category/attribute retrieval
-    -> diagnose candidate agreement, spread, evidence coverage, and stability
-    -> recalibrate generator weights; optionally gate dense retrieval
-    -> fuse ranks with Reciprocal Rank Fusion
-    -> evaluate constraints as match / contradiction / unknown
-    -> rerank and estimate target-blind Top-10 confidence
-    -> recommend, or ask one high-value attribute and recommend
-    -> validate exact catalog ASINs, uniqueness, Top-10 limit, and usage
+    -> deterministic operations: negate, replace, OR, range, ANY
+    -> catalog trie grounding + conservative fuzzy linking
+    -> IntentFrame of typed SlotUpdates and preserved raw phrases
+    -> StateReducer creates current ActiveState
+    -> NeedAssessor calculates specificity and focus_score
+    -> title BM25 + field BM25 + attribute retrieval
+    -> RetrievalAssessor measures agreement, entropy, NQC, coverage, and stability
+    -> weighted Reciprocal Rank Fusion
+    -> constraint match / contradiction / unknown evaluation
+    -> lightweight reranking; optional dense/cross-encoder stage
+    -> CandidateBelief + target-blind Top10Confidence
+    -> posterior-weighted clarification selection
+    -> ResponseGuard validates exact ASINs and API shape
 ```
 
-## Main architectural ideas
+## Core algorithms
 
-- **Soft intent routing:** intent is a continuous `focus_probability`, not a hard Buying/Browsing switch. All cheap generators remain eligible.
-- **Two-pass planning:** language and state create the initial retrieval plan; candidate diagnostics recalibrate it.
-- **State over chat concatenation:** retrieval uses current active constraints, not stale historical text.
-- **Override correctness:** corrections replace incompatible state before the next retrieval.
-- **Three-valued evidence:** missing metadata is `unknown`, never an automatic contradiction.
-- **Always recommend:** a clarification normally accompanies recommendations so the current turn retains a hit opportunity.
-- **Metric-aware questions:** ask only when expected next-turn Top-10 gain justifies answerability risk and MTTC cost.
-- **Inspectable ranking:** preserve generator ranks, constraint results, reason codes, latency, and fallback behavior.
-
-## Candidate and ranking stages
-
-| Stage | Purpose |
+| Component | Algorithm |
 |---|---|
-| Title FTS | Precise product and category matching |
-| Field-weighted FTS | Recall from title, categories, features, details, store, and description |
-| Category/attribute retrieval | Explicit category, material, color, size, style, brand, budget, feature, and use-case evidence |
-| Optional dense retrieval | Subjective needs and vocabulary mismatch when lexical agreement is weak |
-| Reciprocal Rank Fusion | Combine incomparable generator rankings |
-| Constraint evaluator | Partition verified matches, unknowns, and contradictions |
-| Lightweight reranker | Improve Top-10 ordering and MRR |
-| Optional semantic reranker | Cost-gated Top-N refinement with timeout and deterministic fallback |
+| Text normalization | Unicode NFKC, casefolded lookup views, raw-text preservation |
+| Operation parsing | Compiled regex and finite-state rules |
+| Attribute grounding | Catalog-derived longest-match token trie |
+| Fuzzy linking | Token Jaccard + `difflib.SequenceMatcher` + category compatibility |
+| Lexical retrieval | SQLite FTS5 BM25 with field weights |
+| Structured retrieval | Category/attribute posting-list set operations |
+| Route control | Heuristic `focus_score`; all cheap generators still run |
+| Retrieval confidence | Generator Jaccard, category entropy, NQC, margin, weight-perturbation stability |
+| Fusion | Weighted Reciprocal Rank Fusion, `k=60` |
+| Constraints | Three-valued logic: match, contradiction, unknown |
+| Reranking | RRF + constraint support + raw phrase match + capped popularity |
+| Question selection | Candidate-belief-weighted partition gain and simulated rank gain |
+| Optional semantics | MiniLM embeddings and Top-30 cross encoder with timeout/fallback |
 
-## Key data structures
+## Chosen technologies
 
-- `ProductRecord`: immutable raw and normalized catalog evidence.
-- `IntentFrame`: one-message interpretation and proposed slot updates.
-- `SessionState`: active constraints, exclusions, profile, prior actions, and diagnostics.
-- `RetrievalRequest`: immutable current-state snapshot for generators.
-- `RetrievalPlan`: generator weights, depths, and optional-stage gates.
-- `CandidateHit`: per-generator ranks, constraint results, scores, and explanations.
-- `Top10Confidence`: target-blind stability and evidence estimate.
-- `ActionDecision`: recommend or ask-and-recommend with reason codes.
+The reliable path uses Python 3.10+, the standard library, SQLite FTS5, JSONL, dataclasses, enums, protocols, and `unittest`. It has no required network, LLM, GPU, or vector-database dependency.
 
-## Key technologies
+Optional measured stages use:
 
-| Technology | Use |
-|---|---|
-| Python 3.10+ | Agent, typed domain models, orchestration, tests |
-| SQLite FTS5 / BM25 | Fast in-memory lexical indexes and deterministic fallback |
-| JSONL | Official frozen catalog and public sessions |
-| Dataclasses, enums, protocols, type hints | Stable module contracts and state transitions |
-| Catalog-derived normalized indexes | Category and attribute grounding without external histories |
-| Reciprocal Rank Fusion | Rank-level hybrid retrieval fusion |
-| Standard-library `unittest` | Fast deterministic unit and integration tests |
-| Official local evaluator | Hit Rate@10, MRR, MTTC, Efficiency, scenario metrics |
-| Optional local embeddings | Dense semantic candidate retrieval if measured recall requires it |
-| Optional LLM API/local model | Structured interpretation or Top-N reranking only when measured and budgeted |
+- NumPy exact dot-product retrieval;
+- `sentence-transformers/all-MiniLM-L6-v2` embeddings;
+- `cross-encoder/ms-marco-MiniLM-L-6-v2` over at most 30 candidates;
+- a schema-constrained `SemanticParser` provider with deterministic fallback.
 
-The reliable path must remain functional without optional embeddings or an LLM.
+## Important semantics
 
-## Code ownership map
+- `focus_score` is an uncalibrated routing control, not Buying probability.
+- `NeedAssessment` describes the expressed need; `RetrievalAssessment` describes search quality.
+- the interpreter proposes events; only `StateReducer` changes active state.
+- missing product metadata is `unknown`, never contradiction.
+- raw feature text remains searchable even when it cannot be safely normalized.
+- an Intent Override deactivates stale values before retrieval.
+- `ANY` clears and suppresses an attribute and prevents repeat questions.
+- ask-and-recommend preserves the current hit opportunity, so the main question is which attribute to ask.
 
-| Area | Planned location |
-|---|---|
-| Official Agent adapter | `starter/agent.py` |
-| Orchestration and response guard | `shopping_copilot/agent.py`, `shopping_copilot/contracts.py` |
-| Catalog cleaning and indexes | `shopping_copilot/catalog/` |
-| Message and intent understanding | `shopping_copilot/understanding/` |
-| Session state and question policy | `shopping_copilot/dialog/` |
-| Candidate generation and fusion | `shopping_copilot/retrieval/` |
-| Constraint and semantic reranking | `shopping_copilot/ranking/` |
-| Runtime diagnostics and traces | `shopping_copilot/observability/` |
-| Unit and scenario tests | `tests/unit/`, `tests/integration/` |
+## Implementation order
 
-## Evaluation priority
+1. Reproduce the starter through `CatalogStore` and `ResponseGuard`.
+2. Add deterministic interpretation and Active State.
+3. Add title, field, and attribute generators with uniform RRF.
+4. Add Need and Retrieval assessments plus tri-state reranking.
+5. Add CandidateBelief and adaptive questions.
+6. Add dense retrieval or a model only for a measured failure.
 
-1. Target recall at candidate depths 10/50/100/300.
-2. Immediate Top-10 Hit Rate.
-3. MRR within the Top 10.
-4. Hit-turn distribution and MTTC.
-5. Scenario regressions, especially Override and Boundary.
-6. Latency, memory, tokens, cost, and fallback rate.
+## Evaluation order
 
-Published starter baseline: Hit Rate@10 `0.125`, MRR `0.068034`, MTTC `9.81`.
+1. candidate target recall at 10/50/100/300;
+2. Hit Rate@10;
+3. MRR;
+4. MTTC and hit-turn distribution;
+5. Buying, Browsing, Override, and Boundary regressions;
+6. latency, memory, tokens, cost, and fallback rate.
 
-## First implementation sequence
+Published starter: Hit Rate@10 `0.125`, MRR `0.068034`, MTTC `9.81`.
 
-1. Reproduce the starter through the new immutable `CatalogStore`.
-2. Add typed message parsing and state reduction.
-3. Add multiple cheap generators with uniform fusion and candidate-recall logging.
-4. Add soft focus blending and two-pass diagnostic calibration.
-5. Add tri-state constraint reranking and Top-10 confidence.
-6. Add the always-recommend question policy.
-7. Consider dense retrieval or an LLM only after a measured failure identifies the need.
-
-For full contracts, tests, ownership, experiment order, options, and references, see [architecture.md](architecture.md).
+See [architecture.md](architecture.md) for formulas, contracts, module paths, thresholds, tests, ownership, fallbacks, and ablations.
