@@ -17,6 +17,12 @@ tests/test_5core_builder.py
 tests/test_organizer_pipeline.py
 *.log
 
+# Local planning, research, generated indexes, and experiment output.
+.local/
+analysis/
+artifacts/
+experiments/
+
 
 # large data files
 catalog.jsonl.gz
