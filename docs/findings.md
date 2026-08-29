@@ -24,6 +24,10 @@ Final scenario results:
 
 Token usage is zero because the semantic provider is disabled.
 
+The optional OpenAI Responses API adapter is contract-tested with mocked HTTP
+responses only. It is not part of the reported score and has no measured cost or
+latency yet.
+
 ## What worked
 
 - Preserving raw disclosed constraints made long catalog feature text searchable.

@@ -50,7 +50,7 @@ These dependencies are introduced only after an ablation demonstrates a specific
 | NumPy | Current compatible release | Exact vector similarity over 50,000 products | Skip dense generator |
 | Sentence Transformers | `sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions | Product and subjective-query embeddings | Field-weighted FTS |
 | Cross encoder | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Rerank at most 30 candidates | Lightweight reranker |
-| External/local LLM | Provider behind `SemanticParser` protocol | Schema-constrained interpretation of unresolved clauses | Deterministic interpreter |
+| OpenAI Responses API or local LLM | Provider behind `SemanticParser` protocol | Schema-constrained interpretation of unresolved clauses | Deterministic interpreter |
 
 Dense vectors are stored as normalized `float32` arrays. A `50_000 x 384` matrix is approximately 73 MiB, so exact NumPy dot-product retrieval is simpler than an infrastructure-heavy vector database. Model artifacts are built locally and are not committed unless the team explicitly chooses to distribute them.
 
@@ -504,7 +504,23 @@ semantic/LLM proposal        capped at 0.70 until corroborated
 
 Confidence changes ranking strength, not whether raw text reaches retrieval. Low-confidence evidence is never a hard exclusion.
 
-### 7.6 Raw evidence preservation
+### 7.6 Optional semantic interpretation
+
+`GatedSemanticParser` calls a provider only for subjective or structurally
+complex language. Short attribute replies, explicit corrections, Boundary
+answers, and simulator-style constraint payloads remain deterministic. The
+concrete `OpenAIResponsesSemanticParser` sends a compact Context Snapshot to
+`POST /v1/responses` with `store=false`, a strict JSON schema, bounded input and
+output, and the configured timeout.
+
+The schema returns short query rewrites, subjective needs, and soft slot
+hypotheses. It cannot return product identifiers. Model confidence is capped at
+`0.70`; numeric comparisons, negation, overrides, and exact catalog grounding
+remain authoritative in deterministic code. Invalid JSON, schema mismatch,
+timeout, provider error, or incomplete configuration produces an empty semantic
+interpretation and leaves the reliable path unchanged.
+
+### 7.7 Raw evidence preservation
 
 The interpreter emits both structured values and raw retrieval phrases. This is essential because public intent constraints range from short material values to long catalog feature text. A long feature sentence may be difficult to normalize but highly discriminative for lexical retrieval.
 
@@ -928,6 +944,11 @@ No fallback may fabricate an ASIN.
 Runtime constants are frozen dataclasses in `shopping_copilot/config.py`. Each evaluator run records a canonical JSON representation and SHA-256 of the configuration.
 
 Secrets are read only from environment variables inside optional provider adapters. `.env` remains ignored; only `.env.example` may be committed. The reliable path requires no secret.
+
+The optional Responses API adapter is enabled only when
+`SHOPPING_COPILOT_LLM_ENABLED` is true and both `OPENAI_API_KEY` and an explicit
+`SHOPPING_COPILOT_LLM_MODEL` are set. There is deliberately no implicit model
+choice. Without complete opt-in the factory returns `DisabledSemanticParser`.
 
 Optional model calls require an explicit timeout, input-size limit, schema validation, token accounting, deterministic fallback, and provider/model identifier in the run report.
 

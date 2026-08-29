@@ -24,11 +24,22 @@ ALLOWED_ATTRIBUTES = frozenset(
 
 
 @dataclass(frozen=True)
+class SemanticSlotHypothesis:
+    """Soft model proposal that still requires deterministic grounding."""
+
+    attribute: str
+    value: str
+    confidence: float
+    evidence: str
+
+
+@dataclass(frozen=True)
 class SemanticInterpretation:
     """Validated, optional semantic hints; never a source of catalog IDs."""
 
     query_rewrites: tuple[str, ...] = ()
     subjective_needs: tuple[str, ...] = ()
+    slot_hypotheses: tuple[SemanticSlotHypothesis, ...] = ()
     prompt_tokens: int = 0
     completion_tokens: int = 0
 
@@ -45,6 +56,10 @@ class DisabledSemanticParser:
 
     def interpret(self, message: str, context: str) -> SemanticInterpretation:
         return SemanticInterpretation()
+
+
+class SemanticParserError(RuntimeError):
+    """Safe provider-boundary failure without credentials or response bodies."""
 
 
 class ResponseGuard:

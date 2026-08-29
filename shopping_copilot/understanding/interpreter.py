@@ -147,6 +147,7 @@ class MessageInterpreter:
             no_preference_attribute=no_preference,
             query_rewrites=semantic.query_rewrites,
             subjective_needs=semantic.subjective_needs,
+            semantic_hypotheses=semantic.slot_hypotheses,
             prompt_tokens=semantic.prompt_tokens,
             completion_tokens=semantic.completion_tokens,
         )

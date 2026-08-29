@@ -8,8 +8,8 @@
    candidate depth with target-ASIN-disjoint folds.
 4. Add explicit tri-state constraint evidence: match, contradiction, or unknown.
 5. Add configuration hashes and optional per-turn traces without hidden labels.
-6. Implement and evaluate a schema-validated semantic parser behind the existing
-   stub, with timeout, token accounting, and deterministic fallback.
+6. Evaluate the implemented schema-validated semantic parser with a real key,
+   recording parse quality, timeout rate, tokens, latency, cost, and score delta.
 7. Test paraphrases not copied from the simulator and grow the interpreter corpus.
 8. Record memory usage and rerun latency on the judging environment.
 9. Finish release instructions, limitations, team contributions, and demo script.

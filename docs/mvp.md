@@ -61,10 +61,14 @@ local audit measured 2.37 s startup and 470 ms p95 response latency.
 
 ## Semantic model status
 
-`DisabledSemanticParser` is the offline default. A future provider may return
-validated query rewrites and subjective needs, but it cannot generate ASINs.
-Provider evaluation, timeouts, cost, and parameter tuning remain required before
-enabling it for official runs. The deterministic path remains the fallback.
+`DisabledSemanticParser` is the offline default. An opt-in OpenAI Responses API
+adapter now produces schema-validated query rewrites, subjective needs, and soft
+slot hypotheses. It is gated to subjective or complex language, cannot generate
+ASINs, and falls back to an empty semantic result on failure.
+
+The adapter has only mocked contract tests because no API key is available.
+Quality, latency, token cost, model choice, and end-to-end score must be measured
+before enabling it for official runs. See [llm-integration.md](llm-integration.md).
 
 ## Tuning status
 

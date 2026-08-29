@@ -7,7 +7,7 @@ from pathlib import Path
 from shopping_copilot.catalog.normalization import tokenize
 from shopping_copilot.catalog.store import FIELD_WEIGHTS, CatalogStore
 from shopping_copilot.config import MVPConfig
-from shopping_copilot.contracts import DisabledSemanticParser, ResponseGuard, SemanticParser
+from shopping_copilot.contracts import ResponseGuard, SemanticParser
 from shopping_copilot.dialog.policy import QuestionPolicy
 from shopping_copilot.dialog.reducer import StateReducer
 from shopping_copilot.dialog.store import SessionStore
@@ -18,6 +18,7 @@ from shopping_copilot.retrieval.fusion import assess_results, reciprocal_rank_fu
 from shopping_copilot.retrieval.lexical import LexicalRetriever
 from shopping_copilot.retrieval.planner import RetrievalPlanner
 from shopping_copilot.understanding.interpreter import MessageInterpreter
+from shopping_copilot.understanding.semantic import semantic_parser_from_environment
 
 
 class ShoppingAgent:
@@ -31,7 +32,7 @@ class ShoppingAgent:
         self.config = config or MVPConfig()
         self.catalog = CatalogStore(catalog_path)
         self.sessions = SessionStore()
-        self.interpreter = MessageInterpreter(semantic_parser or DisabledSemanticParser())
+        self.interpreter = MessageInterpreter(semantic_parser or semantic_parser_from_environment(self.config))
         self.reducer = StateReducer()
         self.planner = RetrievalPlanner(self.config)
         self.retriever = LexicalRetriever(self.catalog, self.config)

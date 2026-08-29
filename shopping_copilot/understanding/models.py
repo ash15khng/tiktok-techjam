@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from shopping_copilot.contracts import SemanticSlotHypothesis
+
 
 class Attribute(str, Enum):
     CATEGORY = "category"
@@ -40,5 +42,6 @@ class IntentFrame:
     no_preference_attribute: Attribute | None
     query_rewrites: tuple[str, ...] = ()
     subjective_needs: tuple[str, ...] = ()
+    semantic_hypotheses: tuple[SemanticSlotHypothesis, ...] = ()
     prompt_tokens: int = 0
     completion_tokens: int = 0

@@ -20,6 +20,8 @@ class MVPConfig:
     max_focused_terms: int = 12
     max_recommendations: int = 10
     semantic_timeout_seconds: float = 4.0
+    semantic_max_input_chars: int = 4_000
+    semantic_max_output_tokens: int = 500
     profile_score_cap: float = 0.03
     popularity_weight: float = 0.18
     popularity_count_cap: int = 20_000

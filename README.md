@@ -9,6 +9,7 @@ Project documentation:
 - MVP boundaries and canonical commands: [`docs/mvp.md`](docs/mvp.md)
 - Measured MVP behavior: [`docs/findings.md`](docs/findings.md)
 - Prioritized follow-up work and alternatives: [`docs/todo.md`](docs/todo.md)
+- Optional semantic parser setup and expectations: [`docs/llm-integration.md`](docs/llm-integration.md)
 
 ## What You Receive
 
