@@ -23,3 +23,4 @@ __all__ = [
     "normalize_str",
     "parse_price",
 ]
+

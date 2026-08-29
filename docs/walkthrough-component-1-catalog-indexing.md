@@ -89,3 +89,4 @@ python3 -m unittest discover -s tests -p "test_*.py" -v
 ### Verification Results
 - **48/48 tests passed in 0.96s (100% success rate)**.
 - Query latencies for BM25 and posting set intersections are consistently **< 5ms**.
+

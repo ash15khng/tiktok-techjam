@@ -253,3 +253,4 @@ class CatalogIndex:
         for attr, val_map in self._attribute_to_ids.items():
             vocab[attr].update(val_map.keys())
         return dict(vocab)
+

@@ -136,3 +136,4 @@ class CatalogLoader:
     def load_all(self, file_path: str | Path) -> list[ProductRecord]:
         """Loads and returns all records from the catalog file."""
         return list(self.stream_file(file_path))
+

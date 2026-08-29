@@ -57,3 +57,4 @@ class ProductRecord:
     average_rating: float | None
     rating_number: int | None
     field_presence: frozenset[str]
+

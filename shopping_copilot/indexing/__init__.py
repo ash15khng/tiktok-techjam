@@ -15,3 +15,4 @@ __all__ = [
     "DEFAULT_BM25_FIELD_WEIGHTS",
     "MAX_FTS_QUERY_TERMS",
 ]
+

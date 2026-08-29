@@ -32,3 +32,4 @@ DEFAULT_BM25_FIELD_WEIGHTS: tuple[float, ...] = (
 
 # Max terms to include in FTS5 query to prevent unbounded expressions
 MAX_FTS_QUERY_TERMS = 24
+
