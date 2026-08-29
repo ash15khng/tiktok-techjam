@@ -51,6 +51,51 @@ class MessageInterpreterTest(unittest.TestCase):
         self.assertTrue(frame.override)
         self.assertEqual(frame.preference_phrases, ("waterproof",))
 
+    def test_short_brand_reply_uses_the_last_clarification(self) -> None:
+        frame = self.parse("Nike", "brand")
+
+        self.assertEqual(frame.preference_phrases, ("Nike",))
+        self.assertEqual(frame.slot_updates[0].attribute, Attribute.BRAND)
+        self.assertEqual(frame.slot_updates[0].source, "contextual")
+
+    def test_numeric_size_reply_uses_context_and_remains_searchable(self) -> None:
+        frame = self.parse("7", "size")
+
+        self.assertEqual(frame.preference_phrases, ("7",))
+        self.assertEqual(frame.slot_updates[0].attribute, Attribute.SIZE)
+        self.assertEqual(frame.slot_updates[0].source, "contextual")
+
+    def test_bare_budget_reply_is_normalized_to_an_approximate_range(self) -> None:
+        frame = self.parse("80", "budget")
+
+        self.assertEqual(frame.preference_phrases, ("budget around $80",))
+        self.assertEqual(frame.slot_updates[0].attribute, Attribute.BUDGET)
+
+    def test_explicit_material_overrides_color_question_context(self) -> None:
+        frame = self.parse("Leather is more important", "color")
+
+        self.assertEqual(frame.slot_updates[0].attribute, Attribute.MATERIAL)
+        self.assertEqual(frame.slot_updates[0].source, "explicit")
+
+    def test_bare_no_declines_the_last_attribute(self) -> None:
+        frame = self.parse("no", "color")
+
+        self.assertEqual(frame.no_preference_attribute, Attribute.COLOR)
+        self.assertEqual(frame.slot_updates[0].operation, "set_any")
+        self.assertEqual(frame.slot_updates[0].source, "contextual")
+
+    def test_bare_affirmation_does_not_become_search_evidence(self) -> None:
+        frame = self.parse("yes", "color")
+
+        self.assertEqual(frame.preference_phrases, ())
+        self.assertEqual(frame.slot_updates, ())
+
+    def test_short_category_reply_updates_category_phrases(self) -> None:
+        frame = self.parse("boots", "category")
+
+        self.assertEqual(frame.category_phrases, ("boots",))
+        self.assertEqual(frame.slot_updates[0].attribute, Attribute.CATEGORY)
+
 
 if __name__ == "__main__":
     unittest.main()

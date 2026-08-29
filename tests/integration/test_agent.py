@@ -128,6 +128,14 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual(active.slot_values["budget"], ["under $60"])
         self.assertIn("leather", active.exclusions)
 
+    def test_short_reply_is_grounded_by_the_previous_question(self) -> None:
+        state = self.agent._agent.sessions.get("session")
+        state.last_ask_attribute = "brand"
+
+        self.agent.respond("session", "Example", 1, 10)
+
+        self.assertEqual(state.active.slot_values["brand"], ["Example"])
+
 
 if __name__ == "__main__":
     unittest.main()

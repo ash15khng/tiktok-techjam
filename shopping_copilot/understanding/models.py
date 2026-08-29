@@ -27,6 +27,7 @@ class SlotUpdate:
     operation: str
     value: str
     raw_span: str
+    source: str = "explicit"
 
 
 @dataclass(frozen=True)

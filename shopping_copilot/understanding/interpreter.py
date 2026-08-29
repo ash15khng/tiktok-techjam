@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import re
 
-from shopping_copilot.catalog.normalization import normalize_text, tokenize
+from shopping_copilot.catalog.normalization import normalize_text
 from shopping_copilot.contracts import DisabledSemanticParser, SemanticParser
+from shopping_copilot.understanding.contextual import (
+    contextual_no_preference,
+    resolve_reply_value,
+)
 from shopping_copilot.understanding.models import Attribute, IntentFrame, SlotUpdate
 
 
@@ -22,31 +26,6 @@ NO_PREFERENCE_RE = re.compile(
     r"(?:don['’]?t|do\s+not)\s+have\s+(?:an?\s+|any\s+)?(?:additional\s+)?preference\s+for\s+([a-z_]+)",
     re.IGNORECASE,
 )
-
-MATERIALS = frozenset(("cotton", "polyester", "nylon", "leather", "wool", "spandex", "silk", "rayon", "fabric"))
-COLORS = frozenset(("black", "white", "blue", "red", "pink", "green", "brown", "gray", "grey", "purple", "yellow", "orange", "navy"))
-USE_CASES = frozenset(("hiking", "running", "gym", "winter", "outdoor", "work", "wedding", "travel", "sports"))
-
-
-def _attribute_for(text: str) -> Attribute:
-    terms = set(tokenize(text, drop_stopwords=False))
-    lowered = normalize_text(text)
-    if "budget" in terms or "$" in text or re.search(r"\b(?:under|below|over|around)\s+\d", lowered):
-        return Attribute.BUDGET
-    if terms & MATERIALS:
-        return Attribute.MATERIAL
-    if terms & COLORS or "color" in terms or "colour" in terms:
-        return Attribute.COLOR
-    if terms & USE_CASES:
-        return Attribute.USE_CASE
-    if terms & {"size", "sizing", "width", "wide", "narrow", "small", "medium", "large", "xl", "xxl"}:
-        return Attribute.SIZE
-    if terms & {"style", "fit", "sleeve", "neck", "closure", "department"}:
-        return Attribute.STYLE
-    if "brand" in terms:
-        return Attribute.BRAND
-    return Attribute.FEATURE
-
 
 def _clean_phrase(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip(" -;,.:\t\r\n")
@@ -101,6 +80,8 @@ class MessageInterpreter:
                 no_preference = Attribute(last_ask_attribute) if last_ask_attribute else Attribute.OTHER
             except ValueError:
                 no_preference = Attribute.OTHER
+        else:
+            no_preference = contextual_no_preference(raw, last_ask_attribute)
 
         categories: list[str] = []
         category_match = CATEGORY_RE.search(raw)
@@ -157,20 +138,48 @@ class MessageInterpreter:
             else:
                 retained_preferences.append(phrase)
 
+        resolved_preferences = [
+            (value, resolve_reply_value(value, last_ask_attribute=last_ask_attribute, override=override))
+            for value in retained_preferences
+        ]
+        resolved_exclusions = [
+            (value, resolve_reply_value(value, last_ask_attribute=last_ask_attribute, override=override))
+            for value in exclusions
+        ]
+        resolved_categories = list(categories)
+        preference_values: list[str] = []
         slot_updates: list[SlotUpdate] = [
             SlotUpdate(Attribute.CATEGORY, "replace" if override else "set", value, value)
             for value in categories
         ]
-        slot_updates.extend(
-            SlotUpdate(_attribute_for(value), "replace" if override else "add", value, value)
-            for value in retained_preferences
-        )
-        slot_updates.extend(
-            SlotUpdate(_attribute_for(value), "exclude", value, value)
-            for value in exclusions
-        )
+        for raw_value, resolved in resolved_preferences:
+            if resolved.attribute is None or not resolved.value:
+                continue
+            if resolved.attribute is Attribute.CATEGORY:
+                if resolved.value not in resolved_categories:
+                    resolved_categories.append(resolved.value)
+            else:
+                preference_values.append(resolved.value)
+            slot_updates.append(
+                SlotUpdate(
+                    resolved.attribute,
+                    "replace" if override else "add",
+                    resolved.value,
+                    raw_value,
+                    resolved.source,
+                )
+            )
+        exclusion_values: list[str] = []
+        for raw_value, resolved in resolved_exclusions:
+            if resolved.attribute is None or not resolved.value:
+                continue
+            exclusion_values.append(resolved.value)
+            slot_updates.append(
+                SlotUpdate(resolved.attribute, "exclude", resolved.value, raw_value, resolved.source)
+            )
         if no_preference:
-            slot_updates.append(SlotUpdate(no_preference, "set_any", "", raw))
+            source = "explicit" if no_preference_match else "contextual"
+            slot_updates.append(SlotUpdate(no_preference, "set_any", "", raw, source))
 
         semantic = self.semantic_parser.interpret(raw, context)
         dialogue_acts = ["inform"]
@@ -182,9 +191,9 @@ class MessageInterpreter:
             raw_message=raw,
             dialogue_acts=tuple(dialogue_acts),
             slot_updates=tuple(slot_updates),
-            category_phrases=tuple(dict.fromkeys(categories)),
-            preference_phrases=tuple(dict.fromkeys(retained_preferences)),
-            exclusions=tuple(dict.fromkeys(exclusions)),
+            category_phrases=tuple(dict.fromkeys(resolved_categories)),
+            preference_phrases=tuple(dict.fromkeys(preference_values)),
+            exclusions=tuple(dict.fromkeys(exclusion_values)),
             override=override,
             negative_feedback=negative_feedback,
             no_preference_attribute=no_preference,
