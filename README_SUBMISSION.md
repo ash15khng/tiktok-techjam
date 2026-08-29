@@ -191,6 +191,7 @@ when reporting results.
 | Candidate generation and ranking | [`shopping_copilot/retrieval/`](shopping_copilot/retrieval/) |
 | Clarification policy | [`shopping_copilot/dialog/`](shopping_copilot/dialog/) |
 | Full technical architecture | [`docs/architecture.md`](docs/architecture.md) |
+| End-to-end and component flowcharts | [`docs/system-flowcharts.md`](docs/system-flowcharts.md) |
 | Experiments, including failures | [`docs/findings.md`](docs/findings.md) |
 | LLM boundaries and measured behavior | [`docs/llm-integration.md`](docs/llm-integration.md) |
 

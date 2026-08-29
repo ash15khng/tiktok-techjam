@@ -1,5 +1,11 @@
 # Shopping Copilot Technical Architecture
 
+For a visual implementation guide, see
+[`system-flowcharts.md`](system-flowcharts.md). It includes the end-to-end flow,
+per-turn sequence, and component-level diagrams for catalog ingestion,
+understanding, state, retrieval, ranking, semantics, clarification, guarding, and
+evaluation.
+
 This document is the implementation specification for the TechJam 2026 Conversational E-Commerce Search agent. It defines the runtime stack, algorithms, internal contracts, module boundaries, failure handling, tests, and delivery sequence. The public entry point remains `starter.agent.Agent`.
 
 The authoritative requirements are [competition_specification.md](competition_specification.md), [agent_api_contract.json](agent_api_contract.json), and [evaluation_config.json](evaluation_config.json). The Agent must never read public labels, hidden intent cards, evaluator internals, or ground truth at runtime.
