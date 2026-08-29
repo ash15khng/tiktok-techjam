@@ -17,6 +17,7 @@ class EnvironmentLoaderTest(unittest.TestCase):
                 "\n".join(
                     (
                         "SHOPPING_COPILOT_LLM_ENABLED=1",
+                        "SHOPPING_COPILOT_LLM_MAX_CALLS=12",
                         "SHOPPING_COPILOT_LLM_MODEL='llama3.1:8b'",
                         "SOCLAAS_BASE_URL=https://gateway.example/v1",
                         "SOCLAAS_API_KEY=file-secret",
@@ -31,6 +32,7 @@ class EnvironmentLoaderTest(unittest.TestCase):
                 self.assertEqual(loaded, env_file)
                 self.assertEqual(os.environ["SOCLAAS_API_KEY"], "os-secret")
                 self.assertEqual(os.environ["SHOPPING_COPILOT_LLM_MODEL"], "llama3.1:8b")
+                self.assertEqual(os.environ["SHOPPING_COPILOT_LLM_MAX_CALLS"], "12")
                 self.assertNotIn("UNAPPROVED_VARIABLE", os.environ)
 
     def test_missing_explicit_file_does_not_fall_back_to_repository_env(self) -> None:

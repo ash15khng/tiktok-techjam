@@ -22,7 +22,11 @@ class MVPConfig:
     max_recommendations: int = 10
     semantic_timeout_seconds: float = 4.0
     semantic_max_input_chars: int = 4_000
-    semantic_max_output_tokens: int = 500
+    semantic_max_output_tokens: int = 320
+    semantic_max_calls_per_run: int = 64
+    semantic_cache_size: int = 256
+    semantic_min_confidence: float = 0.55
+    semantic_max_rewrite_terms: int = 12
     profile_score_cap: float = 0.03
     popularity_weight: float = 0.18
     popularity_count_cap: int = 20_000

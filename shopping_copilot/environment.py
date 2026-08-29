@@ -10,6 +10,7 @@ from pathlib import Path
 APPROVED_ENV_KEYS = frozenset(
     {
         "SHOPPING_COPILOT_LLM_ENABLED",
+        "SHOPPING_COPILOT_LLM_MAX_CALLS",
         "SHOPPING_COPILOT_LLM_MODEL",
         "SOCLAAS_BASE_URL",
         "SOCLAAS_API_KEY",

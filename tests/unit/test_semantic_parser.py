@@ -121,6 +121,30 @@ class SemanticParserTest(unittest.TestCase):
         self.assertEqual(complex_result, SemanticInterpretation())
         self.assertEqual(provider.calls, 1)
 
+    def test_gate_caches_success_without_double_reporting_tokens_and_enforces_budget(self) -> None:
+        class CountingProvider:
+            calls = 0
+
+            def interpret(self, message: str, context: str) -> SemanticInterpretation:
+                self.calls += 1
+                return SemanticInterpretation(query_rewrites=("cushioned shoes",), prompt_tokens=11, completion_tokens=7)
+
+        provider = CountingProvider()
+        parser = GatedSemanticParser(provider, max_calls=1, cache_size=2)
+
+        first = parser.interpret("comfortable everyday shoes", "category=shoes")
+        cached = parser.interpret("comfortable everyday shoes", "category=shoes")
+        budgeted = parser.interpret("stylish formal shoes", "category=shoes")
+
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(first.prompt_tokens, 11)
+        self.assertEqual(cached.query_rewrites, first.query_rewrites)
+        self.assertEqual(cached.prompt_tokens, 0)
+        self.assertEqual(budgeted, SemanticInterpretation())
+        self.assertEqual(parser.stats()["cache_hits"], 1)
+        self.assertEqual(parser.stats()["budget_skips"], 1)
+        self.assertEqual(parser.stats()["prompt_tokens"], 11)
+
     def test_single_json_code_fence_is_tolerated(self) -> None:
         payload = {
             "query_rewrites": [],
@@ -142,6 +166,33 @@ class SemanticParserTest(unittest.TestCase):
         result = parser.interpret("comfortable everyday shoes", "category=shoes")
 
         self.assertEqual(result.subjective_needs, ("comfortable",))
+
+    def test_small_model_shape_deviations_are_safely_bounded(self) -> None:
+        response = completed_response(
+            {
+                "query_rewrites": ["one", "two", "three"],
+                "subjective_needs": "comfortable",
+                "slot_hypotheses": [
+                    {"attribute": "feature", "value": "soft", "confidence": 0.8, "evidence": "comfortable"},
+                    {"attribute": "not_allowed", "value": "bad", "confidence": 1, "evidence": "comfortable"},
+                ],
+            }
+        )
+        parser = ResponsesSemanticParser(
+            api_key="secret",
+            base_url="https://gateway.example/v1",
+            model="model",
+            timeout_seconds=1,
+            max_input_chars=100,
+            max_output_tokens=100,
+            transport=lambda request, timeout: response,
+        )
+
+        result = parser.interpret("comfortable shoes", "")
+
+        self.assertEqual(result.query_rewrites, ("one", "two"))
+        self.assertEqual(result.subjective_needs, ("comfortable",))
+        self.assertEqual(len(result.slot_hypotheses), 1)
 
     def test_environment_factory_is_disabled_without_complete_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -166,6 +217,7 @@ class SemanticParserTest(unittest.TestCase):
                 {
                     "SHOPPING_COPILOT_ENV_FILE": missing,
                     "SHOPPING_COPILOT_LLM_ENABLED": "1",
+                    "SHOPPING_COPILOT_LLM_MAX_CALLS": "3",
                     "SHOPPING_COPILOT_LLM_MODEL": "llama3.1:8b",
                     "SOCLAAS_BASE_URL": "https://gateway.example/v1",
                     "SOCLAAS_API_KEY": "secret",
@@ -176,6 +228,7 @@ class SemanticParserTest(unittest.TestCase):
 
         self.assertIsInstance(parser, GatedSemanticParser)
         self.assertEqual(parser.provider.responses_url, "https://gateway.example/v1/responses")
+        self.assertEqual(parser.max_calls, 3)
 
     def test_remote_plain_http_endpoint_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "HTTPS"):

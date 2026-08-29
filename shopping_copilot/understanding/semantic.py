@@ -7,10 +7,14 @@ import os
 import re
 import urllib.error
 import urllib.request
-from urllib.parse import urlparse
 from collections.abc import Callable
+from collections import OrderedDict
+from dataclasses import replace
+from threading import RLock
+from time import perf_counter
+from urllib.parse import urlparse
 
-from shopping_copilot.catalog.normalization import tokenize
+from shopping_copilot.catalog.normalization import normalize_text, tokenize
 from shopping_copilot.config import MVPConfig
 from shopping_copilot.contracts import (
     ALLOWED_ATTRIBUTES,
@@ -43,12 +47,12 @@ SEMANTIC_SCHEMA = {
         "query_rewrites": {
             "type": "array",
             "items": {"type": "string", "maxLength": 160},
-            "maxItems": 3,
+            "maxItems": 2,
         },
         "subjective_needs": {
             "type": "array",
             "items": {"type": "string", "maxLength": 120},
-            "maxItems": 5,
+            "maxItems": 3,
         },
         "slot_hypotheses": {
             "type": "array",
@@ -63,7 +67,7 @@ SEMANTIC_SCHEMA = {
                 "required": ["attribute", "value", "confidence", "evidence"],
                 "additionalProperties": False,
             },
-            "maxItems": 8,
+            "maxItems": 4,
         },
     },
     "required": ["query_rewrites", "subjective_needs", "slot_hypotheses"],
@@ -75,7 +79,8 @@ Return exactly one JSON object with no markdown or surrounding commentary:
 {"query_rewrites": [string], "subjective_needs": [string],
 "slot_hypotheses": [{"attribute": string, "value": string,
 "confidence": number from 0 to 1, "evidence": exact customer quote}]}
-All three arrays are required and may be empty. Attribute must be one of:
+All three arrays are required and may be empty. Return at most 2 rewrites, 3
+needs, and 4 hypotheses. Attribute must be one of:
 category, material, color, size, style, brand, budget, feature, use_case, other.
 Never generate product IDs.
 Keep rewrites short and catalog-searchable. Preserve the customer's meaning,
@@ -180,27 +185,29 @@ class ResponsesSemanticParser:
         if not isinstance(value, dict):
             raise SemanticParserError("semantic response root must be an object")
 
-        rewrites = _validated_strings(value.get("query_rewrites"), limit=3, max_length=160)
-        needs = _validated_strings(value.get("subjective_needs"), limit=5, max_length=120)
+        rewrites = _validated_strings(value.get("query_rewrites"), limit=2, max_length=160)
+        needs = _validated_strings(value.get("subjective_needs"), limit=3, max_length=120)
         raw_hypotheses = value.get("slot_hypotheses")
-        if not isinstance(raw_hypotheses, list) or len(raw_hypotheses) > 8:
-            raise SemanticParserError("invalid slot_hypotheses")
+        if not isinstance(raw_hypotheses, list):
+            raw_hypotheses = []
         hypotheses: list[SemanticSlotHypothesis] = []
         for item in raw_hypotheses:
-            if not isinstance(item, dict) or set(item) != {"attribute", "value", "confidence", "evidence"}:
-                raise SemanticParserError("invalid slot hypothesis")
+            if len(hypotheses) >= 4:
+                break
+            if not isinstance(item, dict) or not {"attribute", "value", "confidence", "evidence"}.issubset(item):
+                continue
             attribute = item["attribute"]
             value_text = item["value"]
             evidence = item["evidence"]
             confidence = item["confidence"]
             if attribute not in ALLOWED_ATTRIBUTES:
-                raise SemanticParserError("invalid semantic attribute")
+                continue
             if not isinstance(value_text, str) or not value_text.strip() or len(value_text) > 120:
-                raise SemanticParserError("invalid semantic value")
+                continue
             if not isinstance(evidence, str) or not evidence.strip() or len(evidence) > 160:
-                raise SemanticParserError("invalid semantic evidence")
+                continue
             if not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
-                raise SemanticParserError("invalid semantic confidence")
+                continue
             hypotheses.append(
                 SemanticSlotHypothesis(
                     str(attribute),
@@ -220,23 +227,78 @@ class ResponsesSemanticParser:
 
 
 class GatedSemanticParser:
-    """Skip simple turns and convert provider failures into a safe no-op."""
+    """Cost gate, bounded cache, call budget, and reliable provider fallback."""
 
-    def __init__(self, provider: SemanticParser) -> None:
+    def __init__(self, provider: SemanticParser, *, max_calls: int = 64, cache_size: int = 256) -> None:
         self.provider = provider
+        self.max_calls = max(0, int(max_calls))
+        self.cache_size = max(0, int(cache_size))
+        self._cache: OrderedDict[tuple[str, str], SemanticInterpretation] = OrderedDict()
+        self._lock = RLock()
+        self._metrics = {
+            "gate_skips": 0,
+            "provider_calls": 0,
+            "successful_calls": 0,
+            "failed_calls": 0,
+            "cache_hits": 0,
+            "budget_skips": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "provider_latency_ms": 0.0,
+        }
 
     def interpret(self, message: str, context: str) -> SemanticInterpretation:
         if not should_call_semantic_parser(message):
+            with self._lock:
+                self._metrics["gate_skips"] += 1
             return SemanticInterpretation()
+        key = (normalize_text(message), normalize_text(context))
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                self._metrics["cache_hits"] += 1
+                return replace(cached, prompt_tokens=0, completion_tokens=0)
+            if self._metrics["provider_calls"] >= self.max_calls:
+                self._metrics["budget_skips"] += 1
+                return SemanticInterpretation()
+            self._metrics["provider_calls"] += 1
+        started = perf_counter()
         try:
-            return self.provider.interpret(message, context)
+            result = self.provider.interpret(message, context)
         except (SemanticParserError, OSError, ValueError, TypeError):
+            with self._lock:
+                self._metrics["failed_calls"] += 1
+                self._metrics["provider_latency_ms"] += (perf_counter() - started) * 1000
             return SemanticInterpretation()
+        with self._lock:
+            self._metrics["successful_calls"] += 1
+            self._metrics["prompt_tokens"] += result.prompt_tokens
+            self._metrics["completion_tokens"] += result.completion_tokens
+            self._metrics["provider_latency_ms"] += (perf_counter() - started) * 1000
+            if self.cache_size:
+                self._cache[key] = result
+                self._cache.move_to_end(key)
+                while len(self._cache) > self.cache_size:
+                    self._cache.popitem(last=False)
+        return result
+
+    def stats(self) -> dict[str, int | float]:
+        """Return credential-free diagnostics for evaluation and disclosure."""
+
+        with self._lock:
+            return dict(self._metrics)
 
 
 def semantic_parser_from_environment(config: MVPConfig) -> SemanticParser:
     provider = configured_responses_parser_from_environment(config)
-    return GatedSemanticParser(provider) if provider is not None else DisabledSemanticParser()
+    if provider is None:
+        return DisabledSemanticParser()
+    return GatedSemanticParser(
+        provider,
+        max_calls=_environment_max_calls(config.semantic_max_calls_per_run),
+        cache_size=config.semantic_cache_size,
+    )
 
 
 def configured_responses_parser_from_environment(config: MVPConfig) -> ResponsesSemanticParser | None:
@@ -289,13 +351,29 @@ def _strip_json_fence(value: str) -> str:
     return "\n".join(lines[1:-1]).strip()
 
 
+def _environment_max_calls(default: int) -> int:
+    raw = os.environ.get("SHOPPING_COPILOT_LLM_MAX_CALLS", "").strip()
+    if not raw:
+        return max(0, int(default))
+    try:
+        return min(10_000, max(0, int(raw)))
+    except ValueError:
+        return max(0, int(default))
+
+
 def _validated_strings(value: object, *, limit: int, max_length: int) -> tuple[str, ...]:
-    if not isinstance(value, list) or len(value) > limit:
-        raise SemanticParserError("invalid semantic string list")
+    if isinstance(value, str):
+        candidates = [value]
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        return ()
     result: list[str] = []
-    for item in value:
+    for item in candidates:
+        if len(result) >= limit:
+            break
         if not isinstance(item, str) or not item.strip() or len(item) > max_length:
-            raise SemanticParserError("invalid semantic string")
+            continue
         cleaned = item.strip()
         if cleaned not in result:
             result.append(cleaned)
