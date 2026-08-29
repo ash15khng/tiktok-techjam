@@ -94,6 +94,7 @@ def evaluate_hard_cases(
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
         },
+        "agent_diagnostics": agent.diagnostics(),
         "sessions": sessions,
     }
 

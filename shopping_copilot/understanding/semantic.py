@@ -33,6 +33,11 @@ SUBJECTIVE_LANGUAGE_RE = re.compile(
     r"gift|occasion|commute|travel|humid|rainy|warm|cold|everyday)\b",
     re.IGNORECASE,
 )
+IMPLICIT_OUTCOME_RE = re.compile(
+    r"\b(?:can(?:not|'t)|won't|wouldn't|makes?\s+my|feels?\s+like|reacts?\s+to|"
+    r"enough\s+to|so\s+(?:that\s+)?i\s+can|after\s+(?:a\s+)?long)\b",
+    re.IGNORECASE,
+)
 DETERMINISTIC_REPLY_RE = re.compile(
     r"\b(?:no\s+preference|use\s+your\s+judgment|not\s+quite\s+right|"
     r"what\s+matters\s+is|key\s+requirement\s+is|ignore\s+my\s+earlier)\b",
@@ -98,7 +103,11 @@ def should_call_semantic_parser(message: str) -> bool:
         return False
     terms = tokenize(message, drop_stopwords=False)
     has_complex_connector = bool(re.search(r"\b(?:although|however|while|but|something\s+for)\b", message, re.I))
-    return bool(SUBJECTIVE_LANGUAGE_RE.search(message)) or (len(terms) >= 16 and has_complex_connector)
+    return (
+        bool(SUBJECTIVE_LANGUAGE_RE.search(message))
+        or bool(IMPLICIT_OUTCOME_RE.search(message))
+        or (len(terms) >= 16 and has_complex_connector)
+    )
 
 
 def _default_transport(request: urllib.request.Request, timeout: float) -> dict:
@@ -253,6 +262,11 @@ class GatedSemanticParser:
             with self._lock:
                 self._metrics["gate_skips"] += 1
             return SemanticInterpretation()
+        return self.interpret_eligible(message, context)
+
+    def interpret_eligible(self, message: str, context: str) -> SemanticInterpretation:
+        """Apply budget/cache/fallback after an external policy justifies a call."""
+
         key = (normalize_text(message), normalize_text(context))
         with self._lock:
             cached = self._cache.get(key)

@@ -145,6 +145,25 @@ class SemanticParserTest(unittest.TestCase):
         self.assertEqual(parser.stats()["budget_skips"], 1)
         self.assertEqual(parser.stats()["prompt_tokens"], 11)
 
+    def test_policy_approved_call_bypasses_language_gate_but_keeps_budget(self) -> None:
+        class CountingProvider:
+            calls = 0
+
+            def interpret(self, message: str, context: str) -> SemanticInterpretation:
+                self.calls += 1
+                return SemanticInterpretation(query_rewrites=("navy shirt",))
+
+        provider = CountingProvider()
+        parser = GatedSemanticParser(provider, max_calls=1)
+
+        result = parser.interpret_eligible("navy", "category=shirt")
+        budgeted = parser.interpret_eligible("red", "category=shirt")
+
+        self.assertEqual(result.query_rewrites, ("navy shirt",))
+        self.assertEqual(budgeted, SemanticInterpretation())
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(parser.stats()["budget_skips"], 1)
+
     def test_single_json_code_fence_is_tolerated(self) -> None:
         payload = {
             "query_rewrites": [],

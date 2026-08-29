@@ -166,6 +166,8 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual(active.slot_values["feature"], ["breathable"])
         self.assertEqual(response["recommendations"][0]["parent_asin"], "A")
         self.assertEqual(response["usage"], {"prompt_tokens": 15, "completion_tokens": 6})
+        self.assertEqual(agent.sessions.get("semantic").turn_count, 1)
+        self.assertEqual(agent.diagnostics()["semantic_escalation"]["semantic_applied"], 1)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from shopping_copilot.catalog.normalization import normalize_text
 from shopping_copilot.contracts import DisabledSemanticParser, SemanticParser
@@ -71,6 +72,14 @@ class MessageInterpreter:
         self.semantic_max_rewrite_terms = semantic_max_rewrite_terms
 
     def parse(self, message: str, *, last_ask_attribute: str | None, context: str) -> IntentFrame:
+        """Compatibility path: deterministic parse followed by normal semantic gating."""
+
+        frame = self.parse_deterministic(message, last_ask_attribute=last_ask_attribute)
+        return self.enrich_with_semantics(frame, context=context)
+
+    def parse_deterministic(self, message: str, *, last_ask_attribute: str | None) -> IntentFrame:
+        """Interpret a turn without invoking an optional provider."""
+
         raw = str(message or "")
         lowered = normalize_text(raw)
         override = bool(re.search(r"\b(?:actually|instead|ignore\s+(?:my\s+)?earlier|make\s+it)\b", lowered))
@@ -190,18 +199,6 @@ class MessageInterpreter:
             source = "explicit" if no_preference_match else "contextual"
             slot_updates.append(SlotUpdate(no_preference, "set_any", "", raw, source))
 
-        semantic = self.semantic_parser.interpret(raw, context)
-        grounded_semantic = ground_semantic_interpretation(
-            semantic,
-            raw_message=raw,
-            context=context,
-            deterministic_updates=tuple(slot_updates),
-            override=override,
-            min_confidence=self.semantic_min_confidence,
-            max_rewrite_terms=self.semantic_max_rewrite_terms,
-        )
-        preference_values.extend(grounded_semantic.preference_phrases)
-        slot_updates.extend(grounded_semantic.slot_updates)
         dialogue_acts = ["inform"]
         if override:
             dialogue_acts.append("correct")
@@ -217,6 +214,37 @@ class MessageInterpreter:
             override=override,
             negative_feedback=negative_feedback,
             no_preference_attribute=no_preference,
+        )
+
+    def enrich_with_semantics(
+        self,
+        frame: IntentFrame,
+        *,
+        context: str,
+        force: bool = False,
+    ) -> IntentFrame:
+        """Return a semantic-enriched copy; deterministic evidence remains final."""
+
+        interpret_eligible = getattr(self.semantic_parser, "interpret_eligible", None)
+        if force and callable(interpret_eligible):
+            semantic = interpret_eligible(frame.raw_message, context)
+        else:
+            semantic = self.semantic_parser.interpret(frame.raw_message, context)
+        grounded_semantic = ground_semantic_interpretation(
+            semantic,
+            raw_message=frame.raw_message,
+            context=context,
+            deterministic_updates=frame.slot_updates,
+            override=frame.override,
+            min_confidence=self.semantic_min_confidence,
+            max_rewrite_terms=self.semantic_max_rewrite_terms,
+        )
+        return replace(
+            frame,
+            slot_updates=(*frame.slot_updates, *grounded_semantic.slot_updates),
+            preference_phrases=tuple(
+                dict.fromkeys((*frame.preference_phrases, *grounded_semantic.preference_phrases))
+            ),
             query_rewrites=grounded_semantic.query_rewrites,
             subjective_needs=grounded_semantic.subjective_needs,
             semantic_hypotheses=grounded_semantic.slot_hypotheses,

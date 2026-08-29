@@ -58,3 +58,29 @@ class StateReducer:
         state.turn_count += 1
         state.last_feedback_negative = frame.negative_feedback
         return state
+
+    def apply_semantic(self, state: SessionState, frame: IntentFrame) -> bool:
+        """Apply only grounded semantic additions without advancing the turn."""
+
+        active = state.active
+        before_preferences = len(active.preference_phrases)
+        _append_unique(active.preference_phrases, frame.query_rewrites)
+        changed = len(active.preference_phrases) != before_preferences
+        for update in frame.slot_updates:
+            if update.source != "semantic":
+                continue
+            before_preferences = len(active.preference_phrases)
+            _append_unique(active.preference_phrases, (update.value,))
+            changed = changed or len(active.preference_phrases) != before_preferences
+            attribute = update.attribute.value
+            if update.operation == "replace":
+                previous = active.slot_values.get(attribute)
+                active.slot_values[attribute] = [update.value]
+                changed = changed or previous != [update.value]
+            else:
+                values = active.slot_values.setdefault(attribute, [])
+                if update.value not in values:
+                    values.append(update.value)
+                    changed = True
+            active.suppressed_attributes.discard(attribute)
+        return changed

@@ -28,6 +28,10 @@ class MVPConfig:
     semantic_cache_size: int = 256
     semantic_min_confidence: float = 0.55
     semantic_max_rewrite_terms: int = 12
+    # Initial escalation guesses; tune on target-independent language cases.
+    semantic_low_stability_threshold: float = 0.12
+    semantic_ambiguous_category_stability: float = 0.40
+    semantic_min_escalation_terms: int = 6
     profile_score_cap: float = 0.03
     popularity_weight: float = 0.18
     popularity_count_cap: int = 20_000

@@ -124,6 +124,30 @@ class MessageInterpreterTest(unittest.TestCase):
         self.assertEqual(semantic_updates[0].attribute, Attribute.FEATURE)
         self.assertEqual(frame.prompt_tokens, 21)
 
+    def test_deterministic_parse_defers_provider_until_forced_enrichment(self) -> None:
+        class ForcedSemanticParser:
+            calls = 0
+
+            def interpret(self, message: str, context: str) -> SemanticInterpretation:
+                raise AssertionError("normal language gate should not be used")
+
+            def interpret_eligible(self, message: str, context: str) -> SemanticInterpretation:
+                self.calls += 1
+                return SemanticInterpretation(query_rewrites=("water resistant windbreaker commute",))
+
+        provider = ForcedSemanticParser()
+        interpreter = MessageInterpreter(provider)
+        frame = interpreter.parse_deterministic(
+            "Something for a wet and windy commute.",
+            last_ask_attribute=None,
+        )
+
+        self.assertEqual(provider.calls, 0)
+        enriched = interpreter.enrich_with_semantics(frame, context="", force=True)
+
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(enriched.query_rewrites, ("water resistant windbreaker commute",))
+
 
 if __name__ == "__main__":
     unittest.main()
