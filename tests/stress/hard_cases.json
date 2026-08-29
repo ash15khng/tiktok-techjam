@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "frozen_on": "2026-08-29",
   "selection_rule": "Targets exist in the frozen catalog and are absent from the 200 public targets.",
   "cases": [
@@ -59,23 +59,23 @@
       ]
     },
     {
-      "case_id": "flexible-travel-loafers",
-      "challenge": "colloquial lightweight and flexibility",
-      "target_parent_asin": "B09GF1RWH5",
+      "case_id": "after-shift-house-slippers",
+      "challenge": "implicit category and comfort metaphor",
+      "target_parent_asin": "B08MBM15JB",
       "profile": {"preference_tags": []},
       "messages": [
-        "I am after men's casual slip-ons for travel that weigh almost nothing and bend naturally with my feet."
+        "After a long shift I want to slide into something fluffy at home, with crossed straps and open toes, with padding that feels like a pillow."
       ]
     },
     {
-      "case_id": "intent-override-to-loafers",
+      "case_id": "intent-override-to-slippers",
       "challenge": "category and constraint override",
-      "target_parent_asin": "B09GF1RWH5",
+      "target_parent_asin": "B08MBM15JB",
       "profile": {"preference_tags": []},
       "score_from_turn": 2,
       "messages": [
         "I need sturdy black work boots with a rigid sole.",
-        "Actually forget the boots. Make that men's casual slip-ons that are extremely light and flex with my feet."
+        "Actually forget the boots. Make that open-toe fuzzy house slippers with crossed straps and pillow-like cushioning."
       ]
     },
     {

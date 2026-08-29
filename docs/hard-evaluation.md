@@ -7,7 +7,7 @@ tests language patterns that the public simulator may not represent.
 
 `tests/stress/hard_cases.json` was frozen before its first score was observed.
 Its target products exist in the frozen catalog but are absent from all 200
-public targets. The initial 14 cases cover implicit needs, misspellings,
+public targets. The 14 cases cover implicit needs, misspellings,
 subjective product language, conjunctions, multi-turn refinement, and intent
 override. They are manually written rather than copied from catalog fields.
 
@@ -15,6 +15,11 @@ This is a product stress test, not an estimate of the private-set score. It is
 small and intentionally difficult. Do not rewrite a valid case merely because
 the system misses it; fix only ambiguity, incorrect product evidence, or broken
 fixture data and document the change.
+
+Version 2 replaced the target in two related cases after the first run showed
+that the original product had another parent record with effectively identical
+title, features, price, and use cases. Exact-ASIN recovery was therefore not
+identifiable from the customer language. No genuine retrieval miss was removed.
 
 ## Run
 
