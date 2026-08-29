@@ -61,15 +61,19 @@ reset(session_id, user_profile)
     -> create isolated SessionState
 
 respond(session_id, message, turn, top_k)
-    -> MessageInterpreter.parse(message, last question, Context Snapshot)
+    -> MessageInterpreter.parse_deterministic(message, last question)
     -> ContextualReplyResolver: explicit evidence > immediate question > fallback
-    -> optional gated, locally validated semantic hints
     -> StateReducer.apply(IntentFrame)
     -> RetrievalPlanner blends focused/exploratory route weights
     -> field + title + category + category-popularity + constraint FTS
     -> weighted Reciprocal Rank Fusion
     -> generator overlap/stability assessment
     -> full-union LightweightReranker
+    -> SemanticEscalationPolicy checks parse/retrieval confidence
+       -> optional budgeted function-tool parse
+       -> local evidence grounding
+       -> apply semantic delta without incrementing the turn
+       -> reretrieve once only when grounded evidence changed state
     -> stable unseen-first Recommendation Exposure
     -> QuestionPolicy candidate partitions / broad recovery
     -> ResponseGuard.build()
@@ -110,6 +114,7 @@ shopping_copilot/
 |   |-- models.py                    IntentFrame and SlotUpdate
 |   |-- contextual.py                Short/elliptical reply resolution
 |   |-- interpreter.py               Deterministic parsing coordinator
+|   |-- escalation.py                Retrieval-aware semantic call policy
 |   |-- semantic.py                  Optional provider, cost gate, cache
 |   `-- semantic_grounding.py        Retrieval-safe hint validation
 |
@@ -486,19 +491,27 @@ The optional semantic adapter separately caps model-proposed confidence at
 
 ### 7.6 Optional semantic interpretation
 
-`GatedSemanticParser` calls a provider only for subjective or structurally
-complex language. Short attribute replies, explicit corrections, Boundary
-answers, and simulator-style constraint payloads remain deterministic. The
-concrete `ResponsesSemanticParser` sends a compact Context Snapshot to the
+The agent first parses and retrieves deterministically. `SemanticEscalationPolicy`
+then considers substantive messages with missing or malformed category evidence,
+or difficult language combined with low Top-10 stability. An exact multi-token
+preference phrase in the leading deterministic product suppresses a call even
+when generator overlap is low. Short answers remain contextual and never
+escalate. These thresholds are initial engineering guesses and require more
+target-independent tuning.
+
+The concrete `ResponsesSemanticParser` sends a compact Context Snapshot to the
 configured SoCLaaS `/v1/responses` endpoint with bounded input/output, zero
-temperature, and the configured timeout. Because the gateway does not list
-`text.format` among its supported fields, the prompt requests one JSON object
-and the adapter validates it locally.
+temperature, and the configured timeout. It forces one client-executed function
+tool whose strict schema requires at least one query rewrite. Function-call
+arguments are parsed locally; message-text JSON remains a compatibility fallback.
+The gateway does not execute application code or choose catalog identifiers.
 
 The response returns at most two rewrites, three subjective needs, and four soft
 slot hypotheses. `GatedSemanticParser` applies a process-level call cap, caches
 successful repeated message/context pairs, records credential-free call/token/
-latency counters, and never retries a failed billed request.
+latency counters, and never retries a failed billed request. If at least one
+rewrite or soft slot survives grounding, `StateReducer.apply_semantic()` adds
+only that delta without advancing the turn and the agent reruns retrieval once.
 
 `semantic_grounding.py` allows only `feature`, `style`, and `use_case` slots with
 an exact current-message evidence span and confidence at least `0.55`.
@@ -959,7 +972,7 @@ is deliberately no implicit credential or endpoint. Without complete opt-in the
 factory returns `DisabledSemanticParser`.
 
 `SHOPPING_COPILOT_LLM_MAX_CALLS` and
-`SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS` optionally override the default 64-call
+`SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS` optionally override the default 16-call
 process budget and provisional 6-second hard timeout.
 
 The runtime loads only those approved values from the ignored repository `.env`
@@ -1114,11 +1127,12 @@ Implement `NeedAssessor`, `RetrievalAssessor`, tri-state constraints, lightweigh
 
 Implement posterior-weighted partitioning, answerability checks, `other` fallback, and Boundary suppression. Compare fixed and adaptive policies.
 
-### Slice 6: gated semantic stages
+### Slice 6: retrieval-aware semantic stages
 
-The gated and grounded LLM parser is implemented. Dense retrieval and a cross
-encoder remain deferred until a retained experiment documents the precise
-failure and benefit.
+The two-pass escalation policy, strict function-tool adapter, cost gate, and
+grounded semantic delta are implemented. The function-tool request is mocked but
+not yet live-validated. Dense retrieval and a cross encoder remain deferred until
+a retained experiment documents the precise failure and benefit.
 
 ## 23. Definition of done
 

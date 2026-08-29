@@ -76,18 +76,22 @@ and first-hit turn. First-list ordering remains a tuning target.
 
 `DisabledSemanticParser` is the offline default. An opt-in SoCLaaS
 Responses-compatible adapter produces locally validated query rewrites,
-subjective needs, and soft slot hypotheses. It is gated to subjective or complex
-language, cannot generate ASINs, and falls back to an empty semantic result on
-failure.
+subjective needs, and soft slot hypotheses. It is escalated only after a
+deterministic retrieval-confidence check, cannot generate ASINs, and falls back
+to the already-computed deterministic result on failure.
 
-The provider is protected by a call cap and successful-result cache. Before
-retrieval, rewrites require a lexical anchor and soft slots require exact
-evidence, sufficient confidence, and an accepted attribute. Deterministic
-constraints always win.
+The provider is protected by a call cap and successful-result cache. A forced
+client-executed function tool now requires a rewrite; function arguments are
+still validated and grounded locally. Rewrites require a lexical anchor and soft
+slots require exact evidence, sufficient confidence, and an accepted attribute.
+Deterministic constraints always win. Retrieval runs a second time only when an
+accepted semantic delta changes Active State.
 
-One live `llama3.1:8b` compatibility call succeeded at roughly 4.2 seconds with
-343 input and 158 output tokens. That is not a quality, p95 latency, cost, or
-end-to-end score measurement. See [llm-integration.md](llm-integration.md).
+The deterministic 14-case hard suite scores `0.857143` Hit Rate; an offline ideal
+rewrite replay scores `1.000`. Two four-call live text-output passes produced no
+accepted hints and no metric change, while three of eight requests failed. The
+new function-tool request is covered only by mocked tests. See
+[llm-integration.md](llm-integration.md).
 
 ## Tuning status
 

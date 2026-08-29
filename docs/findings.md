@@ -65,6 +65,32 @@ language gate. Provider pricing is still unavailable, so only calls and tokens,
 not currency cost, are reported. Local ignored result files use the `E013`
 prefix under `artifacts/results/`.
 
+### Natural-language stress suite and two-pass semantics
+
+A separate frozen suite uses 14 manually written conversations whose targets
+are absent from the public 200. The deterministic system scores Hit Rate
+`0.857143`, MRR `0.7375`, and MTTC `1.357143`. Its two misses are an implicit
+lightweight windbreaker request and a comfort-metaphor house-slipper request.
+
+An offline ideal-rewrite provider recovers both at rank 5, raising Hit Rate to
+`1.000`, MRR to `0.766071`, and lowering MTTC to `1.071429`. This is an upper
+bound, not a model result, but it proves that grounded query expansion can help
+the existing candidate and reranking pipeline.
+
+The implementation now parses and retrieves deterministically before deciding
+whether to call the provider. It selected zero calls on the previous seeded
+50-session sample and 4 of 15 turns on the hard suite. Exact leading-product
+evidence suppresses unnecessary calls. Semantic evidence is applied without
+advancing the turn, and retrieval repeats only when accepted evidence changes
+state. The full 200-session LLM-off score remains exactly `0.863324`.
+
+Two capped live hard-suite passes made eight attempts total. Five completed,
+three failed, and completed outputs produced no locally usable hints. The first
+run reported 1,258 tokens and the example-guided run reported 2,127. Both had
+zero score and session-rank delta. A forced strict function-tool response is now
+implemented and mocked, but has not been live-validated. Provider price remains
+unknown, so currency cost is not reported.
+
 ## What worked
 
 - Preserving raw disclosed constraints made long catalog feature text searchable.
@@ -102,6 +128,8 @@ prefix under `artifacts/results/`.
   accounting bound paid usage without weakening the offline fallback.
 - The paired 50-session run spent only two provider attempts out of 103 parsed
   turns and degraded no session when one request failed.
+- Retrieval-aware escalation removed both paid calls from that saturated sample
+  while an offline rewrite oracle recovered both independent hard-suite misses.
 
 ## What did not work
 
@@ -139,6 +167,9 @@ prefix under `artifacts/results/`.
 - The sampled semantic ablation consumed 437 tokens without changing any scored
   session. Language complexity alone is therefore not a sufficient economic
   gate when deterministic retrieval is already confident.
+- Adding rewrite examples to the 8B text prompt increased reported input tokens
+  but still yielded no accepted hint. Prompt prose alone was not a reliable
+  output contract; the adapter now uses a forced strict function tool.
 
 ## Feasibility
 

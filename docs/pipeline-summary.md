@@ -20,8 +20,6 @@ reset(profile)
 respond(message)
     -> deterministic category/payload/correction/exclusion/ANY parsing
     -> explicit-or-contextual short reply resolution with provenance
-    -> optional budgeted/cached semantic parse
-    -> evidence-grounded rewrites and soft feature/style/use-case hints
     -> IntentFrame of typed SlotUpdates and preserved phrases
     -> StateReducer creates current ActiveState
     -> sigmoid focus score from current category/constraint evidence
@@ -29,6 +27,9 @@ respond(message)
     -> weighted Reciprocal Rank Fusion
     -> generator overlap and Top-10 stability assessment
     -> full-union lightweight reranking
+    -> optional retrieval-aware semantic escalation
+       -> strict function-tool interpretation and local grounding
+       -> one reretrieval only when accepted evidence changes state
     -> unseen-first Recommendation Exposure control
     -> candidate coverage/Gini clarification or one broad recovery
     -> ResponseGuard validates exact ASINs and API shape
@@ -49,17 +50,19 @@ respond(message)
 | Reranking | Full bounded union: RRF + IDF/phrase coverage + capped popularity + missing-neutral price range |
 | Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
 | Question selection | Top-50 coverage/Gini partition value plus one broad unanswered-question recovery |
-| Optional semantics | SoCLaaS adapter + call cap/LRU cache + local evidence grounding |
+| Optional semantics | Two-pass escalation + strict function tool + cap/cache + local grounding |
 
 ## Chosen technologies
 
 The reliable path uses Python 3.10+, the standard library, SQLite FTS5, JSONL, dataclasses, enums, protocols, and `unittest`. It has no required network, LLM, GPU, or vector-database dependency.
 
 The optional semantic adapter uses a SoCLaaS Responses-compatible API behind a
-protocol with deterministic fallback. Mocked tests cover its critical path; one
-live compatibility call succeeded. Full score impact and latency distribution
-remain unmeasured. NumPy/MiniLM dense retrieval and a Top-N cross encoder remain
-unimplemented alternatives.
+protocol with deterministic fallback. The 14-case hard suite measures language
+outside the public simulator. An offline ideal-rewrite replay recovered both
+deterministic misses, but two capped live text-output runs produced no accepted
+hints. A strict forced function-tool path is now mocked but not live-validated.
+NumPy/MiniLM dense retrieval and a Top-N cross encoder remain unimplemented
+alternatives.
 
 ## Important semantics
 

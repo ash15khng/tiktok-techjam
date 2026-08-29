@@ -31,8 +31,9 @@ sessions. One of 200 public targets remains unfound.
    evidence first and the immediately preceding Clarification second. Each slot
    update records explicit, contextual, or fallback provenance.
 4. An optional billed semantic path adds anchored query rewrites and grounded
-   soft feature/style/use-case hints. A call cap, cache, local validation, and
-   deterministic fallback bound its risk.
+   soft feature/style/use-case hints. It runs only after deterministic retrieval
+   shows a language/coverage concern. A call cap, cache, strict function tool,
+   local validation, and deterministic fallback bound its risk.
 5. Active State stores only currently valid session evidence; the anonymized
    profile is a capped soft prior.
 6. Five lexical rank lists cover field relevance, title relevance, focused
@@ -79,6 +80,14 @@ and `0.892041` TechnicalScore, with no session-level rank or hit-turn changes.
 This supports the safety and cost controls but not enabling paid semantics for
 the competition score. Provider pricing was not supplied, so monetary cost,
 reliability, and p95 are not claimed.
+
+A separate 14-case natural-language suite uses catalog targets outside the
+public 200. The deterministic system scores `0.857143` Hit Rate, while an offline
+ideal-rewrite provider reaches `1.000`, showing a real semantic-expansion
+opportunity. Two four-call live passes produced no accepted hints and no metric
+change; five calls completed, three failed, and 3,385 tokens were reported across
+completed responses. The subsequent forced function-tool contract is mocked but
+not live-validated.
 
 Local Windows measurements on a 40-request broad-query audit:
 
@@ -138,9 +147,9 @@ folds.
 1. Run the canonical unit tests and evaluator on the final judging machine.
 2. Verify the catalog SHA-256 and keep `data/catalog.jsonl` out of Git.
 3. Add all five team members' contribution statements.
-4. Run a fixed real-language ambiguity corpus and obtain provider pricing before
-   any further paid ablation. Require a measurable retrieval or parsing gain;
-   the first 50-session paid sample produced no score delta.
+4. Obtain provider pricing and validate the new forced function-tool request with
+   one capped smoke call before any further paid suite. Keep semantics disabled
+   by default until a live run accepts grounded hints and improves a hard case.
 5. Freeze configuration after target-disjoint validation; do not tune to the one
    remaining public ASIN.
 6. Rehearse the two-turn demo described in [interaction-examples.md](interaction-examples.md).

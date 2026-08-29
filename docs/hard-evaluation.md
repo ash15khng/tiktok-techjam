@@ -47,3 +47,17 @@ For semantic experiments, first use a mocked or recorded provider. Live calls
 require an explicit cap, no automatic retries, and a paired LLM-off comparison.
 Record provider attempts, successful calls, failures, reported tokens, accepted
 hints, candidate-rank deltas, and final session deltas.
+
+## Current results
+
+| System | Hit Rate | MRR | MTTC | Provider attempts |
+|---|---:|---:|---:|---:|
+| Deterministic | 0.857143 | 0.7375 | 1.357143 | 0 |
+| Offline ideal rewrites | 1.000 | 0.766071 | 1.071429 | 4 simulated |
+| Live text-output model | 0.857143 | 0.7375 | 1.357143 | 4 |
+| Live example-guided text model | 0.857143 | 0.7375 | 1.357143 | 4 |
+
+Both deterministic misses are recoverable at rank 5 when supplied with safe,
+catalog-searchable rewrites. Across the two live runs, five requests completed,
+three failed, and no hint survived local validation. The strict function-tool
+revision that follows these runs is mocked but not live-validated.

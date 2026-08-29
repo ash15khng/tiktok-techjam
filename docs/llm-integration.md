@@ -7,9 +7,10 @@ is disabled unless its enable flag, model, HTTPS base URL, and API key are all
 present. The deterministic interpreter remains the fallback.
 
 The adapter has mocked contract tests, a successful live compatibility probe,
-and one paired 50-session public-set ablation. The ablation confirmed bounded
-usage and safe fallback but measured no score improvement. It does not establish
-model quality, p95 latency, monetary cost, or private-set value.
+a paired 50-session public-set ablation, and a separate 14-case natural-language
+stress suite. Paid tests confirm bounded usage and safe fallback but have not yet
+produced a score improvement. They do not establish model quality, p95 latency,
+monetary cost, or private-set value.
 
 ## Local `.env` setup
 
@@ -17,7 +18,7 @@ Copy `.env.example` to `.env`, then edit only the ignored `.env` file:
 
 ```text
 SHOPPING_COPILOT_LLM_ENABLED=1
-SHOPPING_COPILOT_LLM_MAX_CALLS=64
+SHOPPING_COPILOT_LLM_MAX_CALLS=16
 SHOPPING_COPILOT_LLM_MODEL=llama3.1:8b
 SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS=6
 SOCLAAS_BASE_URL=https://your-real-gateway.example/v1
@@ -53,7 +54,7 @@ in the terminal that runs the agent:
 
 ```powershell
 $env:SHOPPING_COPILOT_LLM_ENABLED = "1"
-$env:SHOPPING_COPILOT_LLM_MAX_CALLS = "64"
+$env:SHOPPING_COPILOT_LLM_MAX_CALLS = "16"
 $env:SHOPPING_COPILOT_LLM_MODEL = "llama3.1:8b"
 $env:SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS = "6"
 $env:SOCLAAS_BASE_URL = "https://your-real-gateway.example/v1"
@@ -89,18 +90,27 @@ Every call is stateless and sends only SoCLaaS-supported fields:
 - `instructions` requiring one JSON object;
 - `stream=false`;
 - bounded `max_output_tokens`;
-- `temperature=0`.
+- `temperature=0`;
+- one strict client-executed `function` tool;
+- forced `tool_choice` for that function.
 
 The adapter does not send `background`, `store`, `text.format`, hosted tools, or
 `previous_response_id`. Temporary gateway response state is unnecessary because
-the current Context Snapshot is supplied on every call. The returned JSON is
-validated locally; a single `json` code fence is tolerated for the 8B model.
-Successful repeated message/context pairs are cached, and cache hits report zero
-tokens because no new request is made. Failed requests are not retried.
+the current Context Snapshot is supplied on every call. Function-call arguments
+are validated locally; message-text JSON and a single `json` code fence remain a
+compatibility fallback. Successful repeated message/context pairs are cached,
+and cache hits report zero tokens because no new request is made. Failed requests
+are not retried.
 
 ## Product behavior and fallback
 
-The model is called only for subjective or complex messages such as:
+The model is considered only after deterministic parsing and first-pass
+retrieval. `SemanticEscalationPolicy` calls it for substantive messages with
+missing or malformed category evidence, or difficult language plus unstable
+retrieval. Exact multi-token evidence in the leading deterministic product
+suppresses a call. Short contextual answers remain deterministic.
+
+An eligible example is:
 
 > I need something polished but comfortable for a humid outdoor wedding.
 
@@ -122,7 +132,7 @@ smoke test first so configuration or response-format failures are visible:
 python -m shopping_copilot.llm_smoke_test
 ```
 
-Only after that succeeds should the team run the official evaluator and record
+Only after that succeeds should the team run a capped evaluation and record
 model name, latency, token use, cost, fallback rate, scenario metrics, and the
 deterministic comparison.
 
@@ -155,5 +165,30 @@ not justify enabling billed semantics for score. Keep it off by default until a
 curated ambiguity corpus demonstrates retrieval-relevant gains, then consider a
 gate that also requires low deterministic retrieval confidence. Provider pricing
 was not supplied, so monetary cost is not claimed.
+
+## Hard-language evaluation
+
+Version 2 of `tests/stress/hard_cases.json` contains 14 manually written cases
+whose products are outside the 200 public targets. Deterministic results are Hit
+Rate `0.857143`, MRR `0.7375`, and MTTC `1.357143`. An offline ideal-rewrite
+provider recovers both misses at rank 5, producing Hit Rate `1.000`, MRR
+`0.766071`, and MTTC `1.071429`. This demonstrates that safe query rewriting can
+help the existing retriever without changing its deterministic behavior.
+
+The two-factor escalation policy selected 4 of 15 hard-suite turns and zero
+turns in the earlier seeded 50-session public sample. Two live text-output runs
+were then capped at four attempts each with no retries:
+
+| Run | Attempts | Completed | Failed | Reported tokens | Accepted hints | Score delta |
+|---|---:|---:|---:|---:|---:|---:|
+| Original safety prompt | 4 | 2 | 2 | 1,258 | 0 | 0 |
+| Explicit rewrite examples | 4 | 3 | 1 | 2,127 | 0 | 0 |
+
+Completed responses still produced no locally usable hints. The likely causes
+are output-shape drift and an 8B model choosing empty arrays despite the prose
+request. The next adapter revision therefore forces a client-executed function
+tool with a strict schema and `minItems: 1` for rewrites. Mocked tests pass, but
+this request shape has not been live-tested; do not run another suite until one
+explicitly budgeted smoke call validates it.
 
 The request shape follows the official [OpenAI Responses API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create), while the supported-field subset and gateway-state limitations come from the SoCLaaS documentation supplied to the team.

@@ -11,20 +11,19 @@
    candidate depth with target-ASIN-disjoint folds.
 5. Add explicit tri-state constraint evidence: match, contradiction, or unknown.
 6. Add configuration hashes and optional per-turn traces without hidden labels.
-7. Build a fixed real-language ambiguity corpus covering paraphrase, typos,
-   implicit use cases, competing constraints, and corrections. The seeded
-   50-session paid ablation used two attempts and 437 tokens but changed no
-   score, rank, or hit turn. Do not spend on another public replay until this
-   corpus shows retrieval-relevant utility and provider pricing is known.
-8. Prototype a two-factor semantic gate: require both difficult language and
-   low deterministic retrieval confidence or low generator agreement. Compare
-   its useful-call precision with the current language-only gate.
-9. Grow the current 55-test suite into at least 100 parser utterances, especially
+7. Live-validate the forced semantic function tool with one capped smoke call.
+   Do not run another paid suite unless it returns at least one grounded rewrite.
+8. Expand the frozen 14-case suite with independently reviewed natural language,
+   especially competing constraints, terse implicit needs, and multi-turn
+   corrections. Keep all targets outside the public 200.
+9. Record pre/post candidate ranks and accepted hints per semantic call without
+   storing credentials or raw provider responses.
+10. Grow the current 65-test suite into at least 100 parser utterances, especially
    conjunction scope, short sizes, brand aliases, typos, and contextual replies
    that explicitly switch attributes.
-10. Rerun latency and memory on the judging environment; local measurements are
+11. Rerun latency and memory on the judging environment; local measurements are
    261 ms p95 and about 274 MiB steady working set.
-11. Add the five members' contribution statements and rehearse the prepared
+12. Add the five members' contribution statements and rehearse the prepared
     multi-turn demo before submission.
 
 ## Other possible implementations
