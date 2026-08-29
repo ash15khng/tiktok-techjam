@@ -6,9 +6,10 @@ The optional semantic parser uses the SoCLaaS Responses-compatible endpoint and
 is disabled unless its enable flag, model, HTTPS base URL, and API key are all
 present. The deterministic interpreter remains the fallback.
 
-The adapter has mocked contract tests and one successful live compatibility
-probe. This confirms the endpoint and response parser, but not model quality,
-p95 latency, monetary cost, or score improvement.
+The adapter has mocked contract tests, a successful live compatibility probe,
+and one paired 50-session public-set ablation. The ablation confirmed bounded
+usage and safe fallback but measured no score improvement. It does not establish
+model quality, p95 latency, monetary cost, or private-set value.
 
 ## Local `.env` setup
 
@@ -143,6 +144,16 @@ evaluation were run.
 
 A no-network replay of all 200 public sessions found 13 eligible semantic calls
 and 12 unique message/context pairs. This estimates call volume only, not score.
-Provider pricing was not supplied, so monetary cost is not claimed.
+
+A later paired run sampled 50 public sessions with seed `20260829`. Its dry gate
+selected 2 of 103 parsed turns. Live mode was hard-capped at those 2 provider
+attempts, with no retries: one succeeded, one failed safely, and the run reported
+348 input plus 89 output tokens. LLM-off and LLM-on both scored Hit Rate@10
+`1.000`, MRR `0.710802`, MTTC `2.06`, and TechnicalScore `0.892041`; every
+session-level hit turn and rank was identical. The current public evidence does
+not justify enabling billed semantics for score. Keep it off by default until a
+curated ambiguity corpus demonstrates retrieval-relevant gains, then consider a
+gate that also requires low deterministic retrieval confidence. Provider pricing
+was not supplied, so monetary cost is not claimed.
 
 The request shape follows the official [OpenAI Responses API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create), while the supported-field subset and gateway-state limitations come from the SoCLaaS documentation supplied to the team.

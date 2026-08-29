@@ -38,6 +38,33 @@ seconds using 343 input and 158 output tokens. Provider pricing was not supplied
 so monetary cost is not claimed. This sample is too small for a latency or
 quality distribution.
 
+### Seeded 50-session semantic ablation
+
+On 2026-08-29, a paired evaluation sampled 50 of the 200 public sessions with
+seed `20260829`. Both arms used the same sample IDs and the unmodified evaluator.
+The LLM-off control and LLM-on arm produced identical results:
+
+| Arm | Hit Rate@10 | MRR | MTTC | TechnicalScore | Provider attempts | Reported tokens |
+|---|---:|---:|---:|---:|---:|---:|
+| LLM off | 1.000 | 0.710802 | 2.06 | 0.892041 | 0 | 0 |
+| LLM on, cap 2 | 1.000 | 0.710802 | 2.06 | 0.892041 | 2 | 437 |
+
+The random sample contained 25 Buying, 16 Browsing, 5 Boundary, and 4 Intent
+Override sessions. The language gate skipped 101 interpreter turns and selected
+two messages: one mixed an everyday-bra request with a catalog date field, and
+one described lightweight, responsive walking-shoe cushioning. These are
+plausible noise-removal and subjective-language cases, but the deterministic
+retriever already solved both trajectories. One provider request succeeded,
+one failed safely, and all 50 session-level hit turns and ranks were unchanged.
+
+This run validates the spending controls and fallback, not LLM value. The
+sample provides no evidence that paid semantics improves the competition score,
+so the provider remains off by default. Further paid testing should first pass
+a fixed offline ambiguity corpus and should add retrieval uncertainty to the
+language gate. Provider pricing is still unavailable, so only calls and tokens,
+not currency cost, are reported. Local ignored result files use the `E013`
+prefix under `artifacts/results/`.
+
 ## What worked
 
 - Preserving raw disclosed constraints made long catalog feature text searchable.
@@ -73,6 +100,8 @@ quality distribution.
   category, material, and color inferences before they reached retrieval.
 - A hard process call cap, successful-result cache, and zero-token cache-hit
   accounting bound paid usage without weakening the offline fallback.
+- The paired 50-session run spent only two provider attempts out of 103 parsed
+  turns and degraded no session when one request failed.
 
 ## What did not work
 
@@ -107,6 +136,9 @@ quality distribution.
   second request exceeded the original 4-second timeout. Bounded tolerant
   parsing and a provisional 6-second timeout addressed compatibility, but the
   gateway still needs a larger reliability and p95 sample.
+- The sampled semantic ablation consumed 437 tokens without changing any scored
+  session. Language complexity alone is therefore not a sufficient economic
+  gate when deterministic retrieval is already confident.
 
 ## Feasibility
 

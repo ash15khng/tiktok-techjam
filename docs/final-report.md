@@ -63,16 +63,22 @@ sessions. One of 200 public targets remains unfound.
 
 ## Model, cost, and feasibility
 
-The scored system uses no model API: reported tokens are zero and marginal API
-cost is $0. A locally validated SoCLaaS Responses-compatible adapter is
-implemented but disabled unless an enable flag, API key, HTTPS base URL, and
-explicit model are all supplied.
+The canonical 200-session score uses no model API: reported tokens are zero and
+marginal API cost is $0. A locally validated SoCLaaS Responses-compatible
+adapter is implemented but disabled unless an enable flag, API key, HTTPS base
+URL, and explicit model are all supplied.
 
 One live `llama3.1:8b` compatibility response succeeded in about 4.2 seconds and
 reported 343 input plus 158 output tokens. Two preceding attempts exposed one
-shape deviation and one 4-second timeout. Provider pricing was not supplied and
-no paid evaluator was run, so no LLM score, cost, reliability, or p95 claim is
-made.
+shape deviation and one 4-second timeout.
+
+A paired, seeded 50-session public-set ablation then allowed at most two billed
+calls. One succeeded, one failed safely, and 437 tokens were reported. LLM-off
+and LLM-on produced the same `1.000` Hit Rate@10, `0.710802` MRR, `2.06` MTTC,
+and `0.892041` TechnicalScore, with no session-level rank or hit-turn changes.
+This supports the safety and cost controls but not enabling paid semantics for
+the competition score. Provider pricing was not supplied, so monetary cost,
+reliability, and p95 are not claimed.
 
 Local Windows measurements on a 40-request broad-query audit:
 
@@ -132,8 +138,9 @@ folds.
 1. Run the canonical unit tests and evaluator on the final judging machine.
 2. Verify the catalog SHA-256 and keep `data/catalog.jsonl` out of Git.
 3. Add all five team members' contribution statements.
-4. Run a small fixed real-language LLM corpus and obtain provider pricing before
-   deciding whether a paid official ablation is worthwhile.
+4. Run a fixed real-language ambiguity corpus and obtain provider pricing before
+   any further paid ablation. Require a measurable retrieval or parsing gain;
+   the first 50-session paid sample produced no score delta.
 5. Freeze configuration after target-disjoint validation; do not tune to the one
    remaining public ASIN.
 6. Rehearse the two-turn demo described in [interaction-examples.md](interaction-examples.md).
