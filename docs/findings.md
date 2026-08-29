@@ -17,6 +17,7 @@ read public labels, evaluator helpers, hidden intent cards, or ground truth.
 | Broad recovery after unanswered field | 0.985 | 0.641 | 2.300 | 0.859 |
 | Broad recovery + full-union rerank | 0.995 | 0.635 | 2.245 | 0.863 |
 | Compound user parsing + price signal | 0.995 | 0.635 | 2.245 | 0.863 |
+| Contextual reply resolver | 0.995 | 0.636 | 2.245 | 0.8633 |
 
 Final scenario results:
 
@@ -60,6 +61,9 @@ latency yet.
   while supporting direct user exclusions such as `no leather`.
 - Compound user parsing and missing-neutral numeric price scoring passed an
   end-to-end synthetic interaction without changing the public metrics.
+- Immediate-question context correctly grounds brands, numeric sizes, bare
+  budgets, categories, and declines while explicit current evidence retains
+  priority. It slightly improved overall MRR without changing Hit Rate or MTTC.
 
 ## What did not work
 
@@ -85,15 +89,20 @@ latency yet.
   target appeared under the old intent.
 - Boundary has only ten public sessions. Its final 1.000 Hit Rate and high MRR
   are encouraging but too small a slice for scenario-specific confidence.
+- spaCy 3.8.7 with `en_core_web_sm` was not retained. The local probe added
+  about 226 MiB on disk, 119 MiB standalone working memory, 1.0 s startup, and
+  4.75 ms per message. It exposed useful syntax but did not ground shopping
+  attributes: `7` and `80` remained generic cardinals and `blue/` was tagged as
+  a number. The deterministic resolver took about 4 microseconds per message.
 
 ## Feasibility
 
 A local 40-request audit measured:
 
-- catalog startup: 2.11 seconds;
-- mean response: 211 ms;
-- p95 response: 261 ms;
-- maximum response: 279 ms.
+- catalog startup: 2.45 seconds;
+- mean response: 230 ms;
+- p95 response: 265 ms;
+- maximum response: 269 ms.
 - steady process working set after one response: 274 MiB.
 
 The p95 meets the initial 500 ms reliable-path budget in this local broad-query

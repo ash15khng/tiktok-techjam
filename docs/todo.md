@@ -13,8 +13,9 @@
 6. Add configuration hashes and optional per-turn traces without hidden labels.
 7. Evaluate the implemented schema-validated semantic parser with a real key,
    recording parse quality, timeout rate, tokens, latency, cost, and score delta.
-8. Grow the current real-user examples into at least 100 parser utterances with
-   operation and slot expectations.
+8. Grow the current 43-test suite into at least 100 parser utterances, especially
+   conjunction scope, short sizes, brand aliases, typos, and contextual replies
+   that explicitly switch attributes.
 9. Rerun latency and memory on the judging environment; local measurements are
    261 ms p95 and about 274 MiB steady working set.
 10. Add the five members' contribution statements and rehearse the prepared

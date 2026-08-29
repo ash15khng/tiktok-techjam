@@ -62,6 +62,7 @@ reset(session_id, user_profile)
 
 respond(session_id, message, turn, top_k)
     -> MessageInterpreter.parse(message, last question, Context Snapshot)
+    -> ContextualReplyResolver: explicit evidence > immediate question > fallback
     -> optional gated schema-constrained semantic hints
     -> StateReducer.apply(IntentFrame)
     -> RetrievalPlanner blends focused/exploratory route weights
@@ -101,12 +102,13 @@ shopping_copilot/
 |-- contracts.py                     Protocols and ResponseGuard
 |
 |-- catalog/
-|   |-- models.py                    ProductRecord and provenance types
+|   |-- models.py                    ProductRecord and search-result types
 |   |-- normalization.py             Text and value normalization
 |   `-- store.py                     Product map, FTS5, vocabulary, popularity
 |
 |-- understanding/
 |   |-- models.py                    IntentFrame and SlotUpdate
+|   |-- contextual.py                Short/elliptical reply resolution
 |   |-- interpreter.py               Deterministic parsing coordinator
 |   `-- semantic.py                  Optional SemanticParser adapter
 |
@@ -142,41 +144,29 @@ not current dependencies.
 
 All internal objects are typed dataclasses. Mappings exposed by immutable objects use `Mapping` or are copied before storage.
 
-### 5.1 Catalog contracts
+### 5.1 Current catalog contracts
 
 ```python
 @dataclass(frozen=True)
-class PriceValue:
-    lower: float | None
-    upper: float | None
-    kind: Literal["exact", "range", "lower_bound", "unknown"]
-
-
-@dataclass(frozen=True)
-class AttributeEvidence:
-    value: str
-    source_field: str
-    extraction: Literal["structured", "exact_alias", "text_rule"]
-    confidence: float
-
-
-@dataclass(frozen=True)
 class ProductRecord:
     parent_asin: str
-    raw: Mapping[str, object]
-    search_fields: Mapping[str, str]
+    title: str
     categories: tuple[str, ...]
-    attributes: Mapping[str, frozenset[str]]
-    attribute_evidence: Mapping[str, tuple[AttributeEvidence, ...]]
-    price: PriceValue
+    features: tuple[str, ...]
+    details: tuple[str, ...]
+    store: str
+    description: tuple[str, ...]
+    price: float | None
     average_rating: float | None
-    rating_number: int | None
-    field_presence: frozenset[str]
+    rating_number: int
 ```
 
 Missing product data remains absent. It is never converted into the strings `unknown`, `none`, or `null` and never treated as a contradiction.
 
-### 5.2 Understanding contracts
+Ranged prices, typed attribute evidence, extraction confidence, and explicit
+field-presence tracking are planned extensions rather than current contracts.
+
+### 5.2 Current understanding contracts
 
 ```python
 class Attribute(str, Enum):
@@ -192,97 +182,81 @@ class Attribute(str, Enum):
     OTHER = "other"
 
 
-class Relation(str, Enum):
-    EQ = "eq"
-    NEQ = "neq"
-    LT = "lt"
-    LTE = "lte"
-    GT = "gt"
-    GTE = "gte"
-    RANGE = "range"
-    CONTAINS = "contains"
-
-
 @dataclass(frozen=True)
 class SlotUpdate:
     attribute: Attribute
     operation: Literal["set", "add", "exclude", "clear", "set_any", "replace"]
-    relation: Relation
-    normalized_values: tuple[str, ...]
-    alternative_group: str | None
+    value: str
     raw_span: str
-    char_span: tuple[int, int]
-    strength: Literal["hard", "soft"]
-    explicitness: Literal["explicit", "inferred"]
-    confidence: float
-    provenance: Literal[
-        "numeric_rule", "catalog_exact", "catalog_alias",
-        "fuzzy", "semantic", "llm"
-    ]
-    source_turn: int
+    source: Literal["explicit", "contextual", "fallback"] = "explicit"
 
 
 @dataclass(frozen=True)
 class IntentFrame:
+    raw_message: str
     dialogue_acts: tuple[str, ...]
     slot_updates: tuple[SlotUpdate, ...]
-    product_terms: tuple[str, ...]
+    category_phrases: tuple[str, ...]
+    preference_phrases: tuple[str, ...]
+    exclusions: tuple[str, ...]
+    override: bool
+    negative_feedback: bool
+    no_preference_attribute: Attribute | None
+    query_rewrites: tuple[str, ...]
     subjective_needs: tuple[str, ...]
-    residual_terms: tuple[str, ...]
-    ambiguities: tuple[InterpretationAmbiguity, ...]
-    parse_confidence: float
+    semantic_hypotheses: tuple[SemanticSlotHypothesis, ...]
+    prompt_tokens: int
+    completion_tokens: int
 ```
 
-`alternative_group` preserves OR semantics. For example, `black or navy` creates two color values in one group; it does not create two mandatory color constraints.
+The richer relation, confidence, character-span, alternative-group, and
+source-turn fields described by later algorithms are deferred. In particular,
+first-class OR groups such as `black or navy` are not yet represented.
 
-### 5.3 State and assessment contracts
+### 5.3 Current state and assessment contracts
 
 ```python
-@dataclass(frozen=True)
-class DialogueContext:
-    active_state: ActiveState
-    last_ask_attribute: Attribute | None
+@dataclass
+class ActiveState:
+    category_phrases: list[str]
+    preference_phrases: list[str]
+    exclusions: list[str]
+    slot_values: dict[str, list[str]]
+    suppressed_attributes: set[str]
+    asked_attributes: list[str]
+
+
+@dataclass
+class SessionState:
+    session_id: str
+    customer_profile: dict
+    active: ActiveState
+    last_ask_attribute: str | None
     last_recommendations: tuple[str, ...]
-    turn: int
-
-
-@dataclass(frozen=True)
-class NeedAssessment:
-    decision_stage: Literal["exploring", "narrowing", "deciding", "unknown"]
-    specificity: float
-    commitment: float
-    exploration: float
-    unresolved_need_ratio: float
-    focus_score: float
-    reason_codes: tuple[str, ...]
+    recommendation_exposure: set[str]
+    turn_count: int
+    last_feedback_negative: bool
 
 
 @dataclass(frozen=True)
 class RetrievalAssessment:
     candidate_count: int
     generator_agreement: float
-    normalized_category_entropy: float
-    normalized_query_commitment: float
-    constraint_evidence_coverage: float
-    top10_margin: float
     top10_stability: float
-    unexplained_term_ratio: float
-    latency_ms: float
 ```
 
-`focus_score` is an uncalibrated control score in `[0, 1]`, not a probability of the Buying scenario. If a later experiment calibrates it against held-out route utility, the calibrated output must use a different type and name.
+The planner's `focus_score` is an uncalibrated control score in `[0, 1]`, not a
+probability of the Buying scenario. Decision stages, parser certainty, entropy,
+margin, and calibrated confidence remain planned diagnostics.
 
-### 5.4 Retrieval and ranking contracts
+### 5.4 Current retrieval and ranking contracts
 
 ```python
 @dataclass(frozen=True)
 class RetrievalPlan:
     focus_score: float
-    generator_weights: Mapping[str, float]
-    generator_limits: Mapping[str, int]
-    use_dense: bool
-    use_cross_encoder: bool
-    reason_codes: tuple[str, ...]
+    generator_weights: dict[str, float]
+    generator_limit: int
 
 
 @dataclass
@@ -290,22 +264,16 @@ class CandidateEvidence:
     parent_asin: str
     generator_ranks: dict[str, int]
     raw_scores: dict[str, float]
-    matched_fields: set[str]
-    constraint_results: dict[str, Literal["match", "contradiction", "unknown"]]
-    rrf_score: float = 0.0
-    lightweight_score: float = 0.0
-    semantic_score: float | None = None
-    final_score: float = 0.0
-    reason_codes: list[str] = field(default_factory=list)
+    rrf_score: float
+    final_score: float
 
 
 @dataclass(frozen=True)
-class ActionDecision:
-    ask_attribute: Attribute | None
-    question_text: str | None
-    recommendations: tuple[str, ...]
+class QuestionDecision:
+    ask_attribute: str | None
+    message: str | None
     question_value: float | None
-    reason_codes: tuple[str, ...]
+    reason: str
 ```
 
 Generator scores are retained for diagnostics; they are never directly added across algorithms without normalization or rank fusion.
@@ -314,16 +282,18 @@ Generator scores are retained for diagnostics; they are never directly added acr
 
 ### 6.1 Validation
 
-`CatalogLoader` streams `data/catalog.jsonl` once and validates:
+`CatalogStore` streams `data/catalog.jsonl` once and currently validates:
 
 - each line is a JSON object;
 - `parent_asin` is present, non-empty, and unique;
-- exactly 50,000 valid records are expected for the official catalog;
-- list, mapping, numeric, and text fields have accepted shapes;
-- malformed optional values are recorded as missing, not fatal;
-- the source SHA-256 matches `SHA256SUMS` when that file is supplied.
+- `parent_asin` is present and non-empty;
+- identifiers are unique;
+- malformed optional numeric values are recorded as missing rather than fatal.
 
-Failure to validate ASIN uniqueness or checksum is fatal because exact identity is scored. Missing optional metadata is not fatal.
+The release checklist must separately verify the expected 50,000-record count
+and the published SHA-256 before judging. Bringing those checks into a dedicated
+loader is deferred; uniqueness failure is already fatal because exact identity
+is scored.
 
 ### 6.2 Conservative normalization
 
@@ -337,7 +307,7 @@ Text normalization uses:
 
 Do not stem brand names, sizes, model tokens, or product codes. Units are normalized through explicit rules, for example `in`, `inch`, and `inches` to an inch unit while retaining the numeric value.
 
-### 6.3 Attribute extraction
+### 6.3 Deferred structured attribute extraction
 
 Structured `details` keys are normalized through an alias table:
 
@@ -349,7 +319,10 @@ style aliases    -> style, fit type, closure type, sleeve type
 brand aliases    -> brand, manufacturer
 ```
 
-Because structured keys are sparse, `CatalogAttributeExtractor` also scans title, features, description, categories, and store with high-precision lexicons. Every extracted value records its source field and extraction method.
+The current store preserves flattened `details` text but does not build this
+typed attribute layer. A future `CatalogAttributeExtractor` may also scan title,
+features, description, categories, and store with high-precision lexicons and
+record each value's source field and extraction method.
 
 The catalog-derived value lexicon is implemented as a token trie:
 
@@ -392,18 +365,20 @@ description  1.0
 
 An `fts5vocab` table supplies document frequency. Query construction retains at most 24 discriminative terms by descending IDF so long catalog-derived feature sentences do not create unbounded FTS expressions.
 
-### 6.5 Inverted indexes
+### 6.5 Current lookup indexes
 
-`CatalogStore` also builds:
+`CatalogStore` builds:
 
 ```python
-category_to_ids: dict[str, frozenset[str]]
-attribute_to_ids: dict[Attribute, dict[str, frozenset[str]]]
-token_document_frequency: dict[str, int]
-product_by_asin: dict[str, ProductRecord]
+products: dict[str, ProductRecord]
+valid_ids: frozenset[str]
+products_vocab: SQLite fts5vocab table
+popular_ids: tuple[str, ...]
 ```
 
-Set intersections provide fast exact category and attribute retrieval. Products with unknown attributes remain accessible through lexical generators.
+The FTS vocabulary supplies document frequencies and IDF. Explicit category
+and attribute-to-ID maps remain a deferred optimization; products with missing
+fields remain accessible through the lexical generators.
 
 ## 7. MessageInterpreter
 
@@ -411,16 +386,15 @@ Set intersections provide fast exact category and attribute retrieval. Products 
 
 `MessageInterpreter.parse()` runs the following cascade:
 
-1. preserve raw message and offsets;
-2. classify dialogue operations;
-3. split clauses without losing conjunction scope;
-4. run numeric and logical rules;
-5. perform exact catalog trie matching;
-6. perform conservative alias/fuzzy linking;
-7. classify strength and explicitness;
-8. retain unresolved phrases for retrieval;
-9. optionally invoke `SemanticParser` for unresolved clauses;
-10. validate the resulting frame.
+1. preserve the raw message;
+2. detect corrections, negative feedback, and explicit/no-context declines;
+3. extract category and evaluator/catalog payload spans;
+4. split conservative customer clauses and exclusions;
+5. resolve each value using explicit current evidence first, the immediately
+   preceding Clarification second, and feature fallback last;
+6. retain normalized values plus raw spans and provenance;
+7. optionally invoke `SemanticParser` for subjective or complex language;
+8. validate and return the immutable frame.
 
 Operation detection precedes value extraction. In `Actually, not black—make it white`, `actually` and the contrast determine that black is retracted and white replaces it.
 
@@ -434,7 +408,7 @@ features such as `No Closure closure` remain positive searchable evidence.
 This provenance distinction prevents a lexical negation from reversing the
 meaning of frozen product metadata.
 
-`understanding/rules.py` uses compiled regular expressions and finite-state handling for:
+The current interpreter and `ranking/budget.py` implement:
 
 | Language | Parsed operation |
 |---|---|
@@ -443,14 +417,14 @@ meaning of frozen product metadata.
 | `between X and Y` | budget or size `RANGE` |
 | `around`, `roughly`, `about` | soft range using configurable tolerance |
 | `not`, `without`, `avoid`, `anything but` | scoped `exclude` |
-| `or`, `either ... or` | one alternative group |
-| `and`, comma-separated requirements | independent additions |
+| comma/semicolon-separated requirements | independent additions |
 | `actually`, `instead`, `ignore earlier`, `make it` | `replace` or `clear` followed by `set` |
 | `no preference`, `either is fine`, `your judgment` | `set_any` for the last asked attribute |
-| `must`, `only`, `need`, `required` | hard strength |
-| `prefer`, `ideally`, `would like`, `nice to have` | soft strength |
+| `preferably`, `ideally`, `with` | preference-clause cleanup |
 
-Negation scope ends at a contrast marker, clause boundary, or new attribute span. Stopword filtering is never applied before operation parsing.
+Full conjunction scope, first-class OR groups, and general dependency-based
+negation remain deferred. Stopword filtering is never applied before operation
+parsing.
 
 ### 7.3 Contextual and elliptical replies
 
@@ -460,13 +434,25 @@ The last structured question supplies a default attribute only when the reply do
 last ask=color, reply="navy"             -> set color=navy
 last ask=material, reply="no preference" -> set_any material
 last ask=size, reply="actually wide"     -> replace size=wide
+last ask=brand, reply="Nike"             -> add brand=Nike
+last ask=size, reply="7"                  -> add size=7
+last ask=budget, reply="80"               -> add budget="around $80"
+last ask=color, reply="no"                -> set_any color
 ```
 
-Explicit wording in the current message always outranks the default attribute. A reply such as `No preference on brand, but it must be leather` produces both `set_any(brand)` and `set(material=leather)`.
+Explicit wording in the current message always outranks the default attribute.
+Context inheritance is limited to 100 characters and eight tokens, never uses
+the broad `other` question, and is disabled for an ungrounded correction. Bare
+affirmations such as `yes` are ignored because they contain no usable value.
+Single-digit numeric tokens remain searchable so shoe size `7` is not removed as
+noise. Every `SlotUpdate` records `source` as `explicit`, `contextual`, or
+`fallback`.
 
-### 7.4 Catalog entity linking
+### 7.4 Deferred catalog entity linking
 
-Exact normalized alias matches are preferred. Unmatched spans are compared only with values from the inferred category and attribute using:
+Catalog-derived aliases and fuzzy normalization are not implemented in the
+current MVP. A future linker may compare unmatched spans only with values from
+the inferred category and attribute using:
 
 ```text
 link_score =
@@ -482,22 +468,20 @@ Initial acceptance rules:
 - never fuzzy-link one- or two-character values without a size context;
 - inferred links remain soft unless an exact alias corroborates them.
 
-These thresholds live in `config.py` and must be ablated; they are not embedded in parsing code.
+These are design options, not current thresholds or claimed behavior.
 
-### 7.5 Confidence and provenance
+### 7.5 Provenance
 
-Initial evidence confidence is based on method rather than a model's self-report:
+The current deterministic parser records method provenance:
 
 ```text
-numeric deterministic rule  0.99
-exact catalog value          0.97
-exact catalog alias          0.93
-contextual reply             0.90
-accepted fuzzy link          link_score
-semantic/LLM proposal        capped at 0.70 until corroborated
+explicit    current words identify the attribute
+contextual  the immediate Clarification supplies the attribute
+fallback    no safe attribute was identified; retain as a feature phrase
 ```
 
-Confidence changes ranking strength, not whether raw text reaches retrieval. Low-confidence evidence is never a hard exclusion.
+The optional semantic adapter separately caps model-proposed confidence at
+`0.70`. Deterministic provenance is not presented as a calibrated probability.
 
 ### 7.6 Optional semantic interpretation
 
@@ -543,7 +527,7 @@ IntentFrame -> tuple[SlotUpdate] -> apply -> ActiveState
 
 Retrieval never uses concatenated raw chat as its only source. It uses Active State plus current raw phrases. This prevents stale override terms from re-entering the query.
 
-## 9. NeedAssessor and soft routing
+## 9. Deferred NeedAssessor and current soft routing
 
 `NeedAssessor` does not predict a hidden evaluator label. It computes interpretable dimensions from the frame and Active State.
 
@@ -554,7 +538,7 @@ category_specificity = 1 - log(1 + category_pool) / log(1 + 50_000)
 constraint_density   = min(explicit_active_constraints / 3, 1)
 numeric_specificity  = 1 if a size or budget range is active else 0
 lexical_specificity  = mean normalized IDF of current product terms
-parse_certainty      = IntentFrame.parse_confidence
+parse_certainty      = future parser-confidence signal
 commitment           = min(hard_or_commitment_cues / 2, 1)
 exploration          = min(exploration_or_indifference_cues / 2, 1)
 unresolved_need_ratio= unresolved subjective clauses / max(all need clauses, 1)

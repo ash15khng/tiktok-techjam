@@ -51,6 +51,24 @@ Color is removed and suppressed for later questions. The agent continues with
 ten recommendations and may use one broad recovery question. It does not infer
 a favorite color from the anonymized profile.
 
+## Short answers
+
+The immediately preceding `ask_attribute` supplies context when the current
+answer does not explicitly identify a different attribute:
+
+```text
+ask brand   -> "Nike"  -> brand=Nike
+ask size    -> "7"     -> size=7
+ask budget  -> "80"    -> approximate budget around $80
+ask color   -> "blue/" -> color=blue
+ask color   -> "no"    -> no color preference
+ask color   -> "leather is more important" -> material=leather
+```
+
+Bare `yes` is not usable preference evidence and is ignored. Context never comes
+from older arbitrary turns; only the immediately preceding structured question
+may supply it.
+
 ## Known limits
 
 - Negation scope is conservative; complex clauses still need more corpus tests.

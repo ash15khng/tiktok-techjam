@@ -10,6 +10,7 @@ requiring a network, GPU, or model API. Semantic models remain optional.
 ```text
 message + Active State
     -> deterministic interpretation and override handling
+    -> contextual short-answer resolution from the last question
     -> focused/exploratory route weighting
     -> field, title, category, category-popularity, and constraint FTS retrieval
     -> weighted Reciprocal Rank Fusion
@@ -27,6 +28,11 @@ For ordinary user wording, the deterministic parser separates inline budgets,
 preferences, and exclusions (for example, `shoes under $60, preferably red, no
 leather`). Numeric price scoring is three-valued: matching, violating, or
 unknown when catalog price is missing.
+
+Short answers such as `Nike`, `7`, or `80` inherit brand, size, or budget from
+the immediately preceding structured question. Explicit current evidence still
+wins: `leather` after a color question remains material. Bare `yes` is not added
+as search evidence, while bare `no` suppresses the requested attribute.
 
 ## Runtime boundaries
 
@@ -57,12 +63,12 @@ The unmodified official evaluator currently reports:
 | Metric | Baseline | MVP |
 |---|---:|---:|
 | Hit Rate@10 | 0.125 | 0.995 |
-| MRR | 0.068 | 0.635 |
+| MRR | 0.068 | 0.636 |
 | MTTC | 9.81 | 2.245 |
-| TechnicalScore | 0.107 | 0.863 |
+| TechnicalScore | 0.107 | 0.8633 |
 
 These are development-set measurements, not private-set estimates. A 40-request
-local broad-query audit measured 2.11 s startup and 261 ms p95 response latency.
+local broad-query audit measured 2.45 s startup and 265 ms p95 response latency.
 The retained full-union rerank and broad clarification recovery improved recall
 and first-hit turn. First-list ordering remains a tuning target.
 

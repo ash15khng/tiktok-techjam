@@ -13,9 +13,9 @@ Public development-set result from the unmodified evaluator:
 | Metric | Starter | Current MVP |
 |---|---:|---:|
 | Hit Rate@10 | 0.125 | 0.995 |
-| MRR | 0.068 | 0.635 |
+| MRR | 0.068 | 0.636 |
 | MTTC | 9.81 | 2.245 |
-| TechnicalScore | 0.107 | 0.863 |
+| TechnicalScore | 0.107 | 0.8633 |
 
 This is a public-set engineering result, not an estimate of the 800 private
 sessions. One of 200 public targets remains unfound.
@@ -27,18 +27,21 @@ sessions. One of 200 public targets remains unfound.
 2. Deterministic interpretation separates category, constraints, exclusions,
    numeric budget language, corrections, and no-preference replies. Raw catalog
    phrases remain available when normalization is unsafe.
-3. Active State stores only currently valid session evidence; the anonymized
+3. A contextual reply resolver grounds short answers using explicit current
+   evidence first and the immediately preceding Clarification second. Each slot
+   update records explicit, contextual, or fallback provenance.
+4. Active State stores only currently valid session evidence; the anonymized
    profile is a capped soft prior.
-4. Five lexical rank lists cover field relevance, title relevance, focused
+5. Five lexical rank lists cover field relevance, title relevance, focused
    constraints, category relevance, and category-conditioned popularity.
-5. Weighted Reciprocal Rank Fusion creates a bounded union. The full union is
+6. Weighted Reciprocal Rank Fusion creates a bounded union. The full union is
    reranked by RRF support, IDF coverage, exact phrase coverage, capped rating
    volume, profile overlap, exclusions, and missing-neutral price bounds.
-6. Previously shown products move behind unseen alternatives after rejection.
+7. Previously shown products move behind unseen alternatives after rejection.
    Exposure resets on Intent Override.
-7. Clarification uses top-candidate coverage and diversity. After an unanswered
+8. Clarification uses top-candidate coverage and diversity. After an unanswered
    field, one broad recovery question lets the customer volunteer a priority.
-8. `ResponseGuard` removes invalid/duplicate IDs, caps the list at ten, and
+9. `ResponseGuard` removes invalid/duplicate IDs, caps the list at ten, and
    preserves valid output under component failure.
 
 ## Rule and scope review
@@ -65,10 +68,10 @@ made.
 
 Local Windows measurements on a 40-request broad-query audit:
 
-- catalog startup: 2.11 s;
-- mean response: 211 ms;
-- p95 response: 261 ms;
-- maximum response: 279 ms;
+- catalog startup: 2.45 s;
+- mean response: 230 ms;
+- p95 response: 265 ms;
+- maximum response: 269 ms;
 - steady process working set after load and one response: about 274 MiB.
 
 These meet the provisional 500 ms / 500 MiB reliable-path budgets locally, but
@@ -84,6 +87,8 @@ must be repeated on the organizer's machine.
   end to end. Missing price remains unknown rather than over budget.
 - Corrections replace stale evidence before retrieval. Category remains stable
   unless the customer explicitly changes it.
+- Short replies such as `Nike`, `7`, `80`, `blue/`, and bare `no` are grounded
+  by the last Clarification without overriding explicit current evidence.
 - Subjective needs still rely mainly on lexical overlap. The optional semantic
   adapter is the intended safe extension, but should be enabled only after a
   real-key ablation.
@@ -95,12 +100,15 @@ coverage, unseen-first exposure, and reranking the complete bounded union. A
 category-popularity route improved recall and time-to-hit but initially reduced
 MRR, demonstrating that coverage and first-list precision must be tuned jointly.
 
-Two rejected experiments are important:
+Three rejected experiments are important:
 
 - exposure without reset collapsed Override performance because feedback under
   the old intent was treated as permanent;
 - treating every catalog phrase beginning with `no` as an exclusion reversed
   features such as `No Closure` and reduced TechnicalScore to 0.8588.
+- spaCy with a small trained English model added substantial footprint and
+  generic syntax but did not resolve shopping-specific short-answer semantics;
+  it was tested locally, documented, and removed.
 
 The remaining public miss is a low-volume novelty item in a large tie group.
 Directly boosting it would overfit. A defensible next experiment is a

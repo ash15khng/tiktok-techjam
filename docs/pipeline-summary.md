@@ -19,6 +19,7 @@ reset(profile)
 
 respond(message)
     -> deterministic category/payload/correction/exclusion/ANY parsing
+    -> explicit-or-contextual short reply resolution with provenance
     -> optional gated, schema-constrained semantic hints
     -> IntentFrame of typed SlotUpdates and preserved phrases
     -> StateReducer creates current ActiveState
@@ -37,7 +38,8 @@ respond(message)
 | Component | Algorithm |
 |---|---|
 | Text normalization | Unicode NFKC, casefolded lookup views, raw-text preservation |
-| Operation parsing | Compiled regex for correction, payload, exclusion, and no-preference language |
+| Operation parsing | Rules for correction, payload, exclusion, and no-preference language |
+| Short replies | Explicit evidence first; immediate question context second; bounded fallback |
 | Lexical retrieval | SQLite FTS5 BM25 with field weights |
 | Broad-category coverage | Shared 800-item category pool, ranked separately by BM25 and rating count |
 | Route control | Heuristic `focus_score`; all cheap generators still run |
