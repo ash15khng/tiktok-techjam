@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from shopping_copilot.catalog.normalization import tokenize
 from shopping_copilot.catalog.store import CatalogStore
 from shopping_copilot.config import MVPConfig
@@ -44,11 +46,17 @@ class LightweightReranker:
             contradiction = any(values and values.issubset(product_terms) for values in exclusion_terms)
             profile_overlap = len(product_terms & profile_terms) / max(1, len(profile_terms))
             profile_score = min(self.config.profile_score_cap, 0.03 * profile_overlap)
+            rating_count = self.store.get(candidate.parent_asin).rating_number
+            popularity = min(
+                1.0,
+                math.log1p(max(0, rating_count)) / math.log1p(self.config.popularity_count_cap),
+            )
             candidate.final_score = (
                 0.52 * (candidate.rrf_score / max_rrf)
                 + 0.36 * coverage
                 + 0.12 * exact_ratio
                 + profile_score
+                + self.config.popularity_weight * popularity
                 - (0.70 if contradiction else 0.0)
             )
         rerankable.sort(key=lambda item: (-item.final_score, -item.rrf_score, item.parent_asin))
