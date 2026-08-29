@@ -69,6 +69,18 @@ class QuestionPolicy:
         top = candidates[:50]
         confidence = min(1.0, 0.55 * assessment.top10_stability + 0.45 * min(1.0, len(active.preference_phrases) / 3.0))
 
+        # A declined or unanswerable structured question is a signal to let the
+        # customer name their own priority. This avoids serially interrogating
+        # them about every catalog field and gives one broad recovery turn.
+        previous_question_unanswered = (
+            state.last_ask_attribute is not None
+            and state.last_ask_attribute != "other"
+            and state.last_ask_attribute in active.suppressed_attributes
+        )
+        if previous_question_unanswered and "other" not in unavailable:
+            value = max(0.0, 0.85 * (1.0 - confidence))
+            return QuestionDecision("other", QUESTION_TEXT["other"], value, "unanswered_question_recovery")
+
         values: list[tuple[float, str]] = []
         for attribute in self.attribute_order:
             if attribute in unavailable:

@@ -58,27 +58,20 @@ Dense vectors are stored as normalized `float32` arrays. A `50_000 x 384` matrix
 
 ```text
 reset(session_id, user_profile)
-    -> validate CustomerProfile
     -> create isolated SessionState
 
 respond(session_id, message, turn, top_k)
-    -> MessageInterpreter.parse(message, DialogueContext)
+    -> MessageInterpreter.parse(message, last question, Context Snapshot)
+    -> optional gated schema-constrained semantic hints
     -> StateReducer.apply(IntentFrame)
-    -> NeedAssessor.assess(ActiveState)
-    -> RetrievalPlanner.initial_plan(NeedAssessment)
-    -> title FTS + field FTS + attribute retrieval
-    -> RetrievalAssessor.measure(candidate evidence)
-    -> RetrievalPlanner.calibrate(plan, RetrievalAssessment)
-    -> optional dense expansion
+    -> RetrievalPlanner blends focused/exploratory route weights
+    -> field + title + category + category-popularity + constraint FTS
     -> weighted Reciprocal Rank Fusion
-    -> tri-state ConstraintEvaluator
-    -> LightweightReranker
-    -> optional Top-N cross-encoder reranker
-    -> RecommendationExposureController
-    -> CandidateBelief normalization and Top10Confidence
-    -> QuestionPolicy.select()
+    -> generator overlap/stability assessment
+    -> full-union LightweightReranker
+    -> stable unseen-first Recommendation Exposure
+    -> QuestionPolicy candidate partitions / broad recovery
     -> ResponseGuard.build()
-    -> append TurnRecord and JSON trace
     -> Agent API response
 ```
 
@@ -86,9 +79,14 @@ The key separation is:
 
 - `IntentFrame`: what the current message means;
 - `ActiveState`: which evidence remains active after corrections;
-- `NeedAssessment`: how specific and committed the expressed need is;
-- `RetrievalAssessment`: whether the retrieval result is coherent and stable;
-- `ActionDecision`: which products and clarification to return.
+- `RetrievalPlan`: how active evidence blends the five candidate rank lists;
+- `RetrievalAssessment`: generator agreement and Top-10 stability used by the
+  question policy;
+- `QuestionDecision`: which single optional clarification accompanies the list.
+
+Need assessment, denser retrieval-quality features, tri-state structured
+constraints, learned belief, dense retrieval, and cross-encoder ranking remain
+documented extensions. They are not implied to exist in the current MVP.
 
 ## 4. Package and ownership boundaries
 
@@ -104,50 +102,39 @@ shopping_copilot/
 |
 |-- catalog/
 |   |-- models.py                    ProductRecord and provenance types
-|   |-- loader.py                    JSONL and checksum validation
-|   |-- normalization.py             Text, value, size, and price normalization
-|   |-- attributes.py                Alias construction and catalog extraction
-|   `-- store.py                     FTS and inverted indexes
+|   |-- normalization.py             Text and value normalization
+|   `-- store.py                     Product map, FTS5, vocabulary, popularity
 |
 |-- understanding/
 |   |-- models.py                    IntentFrame and SlotUpdate
-|   |-- interpreter.py               Parsing cascade coordinator
-|   |-- rules.py                     Deterministic operation and numeric rules
-|   |-- grounding.py                 Trie matching and catalog entity linking
-|   |-- assessment.py                NeedAssessor
+|   |-- interpreter.py               Deterministic parsing coordinator
 |   `-- semantic.py                  Optional SemanticParser adapter
 |
 |-- dialog/
-|   |-- models.py                    SessionState, ActiveState, TurnRecord
+|   |-- models.py                    SessionState and ActiveState
 |   |-- store.py                     Thread-safe session lifecycle
 |   |-- reducer.py                   Deterministic state transitions
 |   `-- policy.py                    QuestionPolicy
 |
 |-- retrieval/
-|   |-- models.py                    RetrievalRequest, Plan, CandidateEvidence
-|   |-- lexical.py                   Title and field FTS generators
-|   |-- attributes.py                Inverted-index candidate generator
-|   |-- dense.py                     Optional embedding generator
-|   |-- fusion.py                    Weighted RRF
-|   |-- assessment.py                RetrievalAssessor and QPP features
-|   `-- planner.py                   Initial and calibrated plans
+|   |-- models.py                    Plan, CandidateEvidence, assessment
+|   |-- lexical.py                   Five lexical candidate rank lists
+|   |-- fusion.py                    Weighted RRF and overlap assessment
+|   `-- planner.py                   Focused/exploratory blend
 |
 |-- ranking/
-|   |-- constraints.py               match / contradiction / unknown
 |   |-- reranker.py                  Deterministic scoring
 |   |-- exposure.py                  Across-turn novelty and override reset
-|   |-- belief.py                    CandidateBelief and Top10Confidence
-|   `-- semantic.py                  Optional cross-encoder reranker
-|
-`-- observability/
-    |-- diagnostics.py               Metrics and ablation features
-    `-- trace.py                     Per-turn JSONL traces
+|   `-- explanations.py              Compact customer-facing summary
 
 tests/
 |-- unit/
 |-- integration/
 `-- test_evaluator.py                Protected harness tests
 ```
+
+Files described later but absent from this tree are deferred extension points,
+not current dependencies.
 
 `starter/agent.py` constructs and delegates to `shopping_copilot.agent.ShoppingAgent`. It must not accumulate business logic.
 
@@ -784,36 +771,31 @@ Unknown is never converted into contradiction.
 
 ### 12.3 Lightweight reranker
 
-Normalize provisional signals within the candidate union to `[0, 1]`. Products with a verified hard contradiction are ordered below all non-contradictory products. Within each group:
+The reliable path reranks the full bounded union, up to 800 candidates. This is
+cheap term-set scoring, not a cross encoder; limiting it to the first 160 fused
+candidates prevented disclosed constraints from rescuing relevant products in
+the wider union. Let `idf_coverage` be the fraction of current query IDF mass
+present in the product and `exact_phrase_ratio` the fraction of active raw
+phrases found verbatim in normalized product text:
 
 ```text
-constraint_support = clip(
-    0.30 * hard_match_ratio
-  + 0.15 * soft_match_ratio
-  + 0.10 * category_match
-  - 0.35 * hard_contradiction_ratio
-  - 0.10 * soft_contradiction_ratio,
-  -1, 1
-)
-
-popularity = normalized(
-    log1p(max(rating_number, 0)) * max(average_rating, 0) / 5
-)
+popularity = min(1, log1p(rating_number) / log1p(20_000))
+profile_prior = min(0.03, 0.03 * profile_term_overlap)
 
 final_score =
-    0.55 * normalized_rrf
-  + 0.30 * normalized_constraint_support
-  + 0.10 * raw_phrase_match
-  + 0.05 * popularity
+    0.52 * (rrf / max_rrf)
+  + 0.36 * idf_coverage
+  + 0.12 * exact_phrase_ratio
+  + profile_prior
+  + 0.18 * popularity
+  - 0.70 * explicit_exclusion_match
 ```
 
-`normalized_constraint_support=(constraint_support+1)/2`. `raw_phrase_match` is the fraction of current raw-phrase IDF mass present in the product's searchable fields:
-
-```text
-raw_phrase_match = sum(IDF of matched raw terms) / max(sum(IDF of raw terms), 1e-9)
-```
-
-Profile preferences contribute only inside `soft_match_ratio`, are capped at `0.05` total final-score influence, and are disabled by an explicit conflict or `ANY` state. Final ties use `parent_asin` ascending.
+The popularity count is capped so a bestseller cannot grow without bound.
+Missing fields add neither support nor contradiction. These weights and the
+800-item depth are retained public-set engineering values, not learned
+probabilities; target-disjoint tuning remains required. Final ties use RRF and
+then `parent_asin` ascending.
 
 ### 12.4 Optional cross-encoder
 
@@ -875,40 +857,31 @@ The normal action on turns 1 through 9 is `ask-and-recommend`. Recommendations a
 
 The policy avoids attributes already marked `ANY`, exact repeated questions with no new evidence, attributes fully determined by a hard constraint, attributes with insufficient candidate evidence, and questions whose answers cannot change ordering.
 
-### 14.2 Posterior-weighted partition value
+### 14.2 Candidate-partition value
 
-For each eligible attribute `A`, partition the top 100 candidate mass by grounded value. Missing values form an `unknown` bucket. Let `q_i` be CandidateBelief and `P(v)` the mass of partition `v`.
-
-```text
-partition_gini(A) = 1 - sum_v P(v)^2
-coverage(A)       = mass with a grounded non-unknown value
-miss_factor       = 1 - Top10Confidence
-remaining_factor  = max(0, (10 - turn) / 9)
-```
-
-Simulate the five highest-mass answers by applying each answer constraint and reranking the current candidate union. Define target-blind list utility over order `L` as:
+The reliable MVP partitions the top 50 candidates by an extracted value for
+each eligible attribute. It estimates candidate evidence coverage and Gini
+diversity. Confidence combines generator Top-10 stability with the amount of
+active preference evidence:
 
 ```text
-U(L) = sum(q_i / rank_L(i) for i in first_10(L))
-simulated_gain(v) = max(0, U(rerank_with(A=v)) - U(current_order))
-```
-
-Then calculate:
-
-```text
-expected_rank_gain(A) = sum_v P(v) * simulated_gain(v)
+confidence = min(1,
+    0.55 * top10_stability
+  + 0.45 * min(1, active_preference_count / 3)
+)
 
 QuestionValue(A) =
-    miss_factor
+    coverage(A)
   * partition_gini(A)
-  * coverage(A)
-  * expected_rank_gain(A)
-  * remaining_factor
-  - repeat_risk(A)
-  - boundary_risk(A)
+  * answerability_prior(A)
+  * (1 - confidence)
 ```
 
-There is no generic MTTC turn penalty for an ask-and-recommend response. The relevant cost is receiving an uninformative answer instead of a better clarification.
+The highest value above `0.08` is asked, with an exception after explicit
+negative feedback so the agent can continue recovery. There is no generic MTTC
+penalty for an ask-and-recommend response. The relevant cost is receiving an
+uninformative answer instead of a better clarification. Posterior-weighted
+answer simulation remains a deferred alternative, not current behavior.
 
 ### 14.3 Answerability and fallback
 
@@ -920,7 +893,11 @@ feature, material, color, style, size, use_case, budget, brand, category
 
 This prior comes from released-data diagnostics and must be compared with candidate-only ordering. It never inspects a target at runtime.
 
-If no specific attribute exceeds the question-value threshold but undisclosed need evidence remains likely, use:
+If the previous specific question was declined or had no additional preference,
+ask `other` once before resuming specific partitions. This lets the customer
+name their own priority instead of enduring a serial catalog-field interview.
+If no specific attribute otherwise exceeds the threshold but undisclosed need
+evidence remains likely, the same broad fallback is used:
 
 ```json
 {
@@ -929,7 +906,8 @@ If no specific attribute exceeds the question-value threshold but undisclosed ne
 }
 ```
 
-`other` is a fallback, not the only policy, because the public simulator treats it broadly and private paraphrasing may be less permissive.
+`other` is a recovery/fallback, not the only policy, because the public
+simulator treats it broadly and real users may answer it less specifically.
 
 ### 14.4 Boundary handling
 
@@ -939,7 +917,8 @@ When the customer reports no preference:
 2. remove active/profile values for that attribute from retrieval;
 3. add the attribute to the no-repeat set;
 4. continue returning ten recommendations;
-5. select a different attribute on the next eligible turn.
+5. use one broad recovery question so the customer can volunteer a different
+   priority, then resume non-repeated specific attributes only if needed.
 
 ## 15. ResponseGuard and failure handling
 

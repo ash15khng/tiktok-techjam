@@ -15,7 +15,7 @@ class MVPConfig:
 
     candidate_depth: int = 160
     category_pool_depth: int = 800
-    rerank_depth: int = 160
+    rerank_depth: int = 800
     rrf_k: int = 60
     max_query_terms: int = 40
     max_focused_terms: int = 12

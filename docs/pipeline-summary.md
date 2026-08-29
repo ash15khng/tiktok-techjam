@@ -8,28 +8,27 @@ Find the exact hidden catalog `parent_asin` in the Top 10, at the highest rank a
 
 ```text
 50k-product JSONL catalog
-    -> validate ASINs and checksum
-    -> Unicode normalization without inventing missing values
-    -> SQLite FTS5 + category/attribute inverted indexes
+    -> externally verify published checksum
+    -> validate non-empty unique ASINs while loading
+    -> normalized searchable views without inventing missing values
+    -> product map + SQLite FTS5 + vocabulary frequencies
 
 reset(profile)
-    -> immutable soft Customer Profile
+    -> copied soft Customer Profile
     -> isolated SessionState
 
 respond(message)
-    -> deterministic operations: negate, replace, OR, range, ANY
-    -> catalog trie grounding + conservative fuzzy linking
-    -> IntentFrame of typed SlotUpdates and preserved raw phrases
+    -> deterministic category/payload/correction/exclusion/ANY parsing
+    -> optional gated, schema-constrained semantic hints
+    -> IntentFrame of typed SlotUpdates and preserved phrases
     -> StateReducer creates current ActiveState
-    -> NeedAssessor calculates specificity and focus_score
+    -> sigmoid focus score from current category/constraint evidence
     -> title/field BM25 + category relevance/popularity + constraint retrieval
-    -> RetrievalAssessor measures agreement, entropy, NQC, coverage, and stability
     -> weighted Reciprocal Rank Fusion
-    -> constraint match / contradiction / unknown evaluation
-    -> lightweight reranking; optional dense/cross-encoder stage
+    -> generator overlap and Top-10 stability assessment
+    -> full-union lightweight reranking
     -> unseen-first Recommendation Exposure control
-    -> CandidateBelief + target-blind Top10Confidence
-    -> posterior-weighted clarification selection
+    -> candidate coverage/Gini clarification or one broad recovery
     -> ResponseGuard validates exact ASINs and API shape
 ```
 
@@ -38,36 +37,29 @@ respond(message)
 | Component | Algorithm |
 |---|---|
 | Text normalization | Unicode NFKC, casefolded lookup views, raw-text preservation |
-| Operation parsing | Compiled regex and finite-state rules |
-| Attribute grounding | Catalog-derived longest-match token trie |
-| Fuzzy linking | Token Jaccard + `difflib.SequenceMatcher` + category compatibility |
+| Operation parsing | Compiled regex for correction, payload, exclusion, and no-preference language |
 | Lexical retrieval | SQLite FTS5 BM25 with field weights |
 | Broad-category coverage | Shared 800-item category pool, ranked separately by BM25 and rating count |
-| Structured retrieval | Category/attribute posting-list set operations |
 | Route control | Heuristic `focus_score`; all cheap generators still run |
-| Retrieval confidence | Generator Jaccard, category entropy, NQC, margin, weight-perturbation stability |
+| Retrieval confidence | Pairwise generator Top-20 Jaccard converted to Top-10 stability |
 | Fusion | Weighted Reciprocal Rank Fusion, `k=60` |
-| Constraints | Three-valued logic: match, contradiction, unknown |
-| Reranking | RRF + constraint support + raw phrase match + capped popularity |
+| Reranking | Full bounded union: normalized RRF + IDF coverage + phrase match + capped popularity |
 | Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
-| Question selection | Candidate-belief-weighted partition gain and simulated rank gain |
-| Optional semantics | MiniLM embeddings and Top-30 cross encoder with timeout/fallback |
+| Question selection | Top-50 coverage/Gini partition value plus one broad unanswered-question recovery |
+| Optional semantics | OpenAI Responses schema adapter, gated and disabled without explicit environment opt-in |
 
 ## Chosen technologies
 
 The reliable path uses Python 3.10+, the standard library, SQLite FTS5, JSONL, dataclasses, enums, protocols, and `unittest`. It has no required network, LLM, GPU, or vector-database dependency.
 
-Optional measured stages use:
-
-- NumPy exact dot-product retrieval;
-- `sentence-transformers/all-MiniLM-L6-v2` embeddings;
-- `cross-encoder/ms-marco-MiniLM-L-6-v2` over at most 30 candidates;
-- a schema-constrained `SemanticParser` provider with deterministic fallback.
+The optional semantic adapter uses the OpenAI Responses API behind a protocol
+with deterministic fallback. It has mocked contract tests only. NumPy/MiniLM
+dense retrieval and a Top-N cross encoder remain unimplemented alternatives.
 
 ## Important semantics
 
 - `focus_score` is an uncalibrated routing control, not Buying probability.
-- `NeedAssessment` describes the expressed need; `RetrievalAssessment` describes search quality.
+- `RetrievalAssessment` describes generator coherence, not customer intent.
 - the interpreter proposes events; only `StateReducer` changes active state.
 - missing product metadata is `unknown`, never contradiction.
 - raw feature text remains searchable even when it cannot be safely normalized.
@@ -80,10 +72,11 @@ Optional measured stages use:
 
 1. Reproduce the starter through `CatalogStore` and `ResponseGuard`.
 2. Add deterministic interpretation and Active State.
-3. Add title, field, and attribute generators with uniform RRF.
-4. Add Need and Retrieval assessments plus tri-state reranking.
-5. Add CandidateBelief and adaptive questions.
-6. Add dense retrieval or a model only for a measured failure.
+3. Add five lexical rank lists and weighted RRF. **Done.**
+4. Add full-union lightweight reranking and exposure control. **Done.**
+5. Add adaptive specific questions and one broad recovery. **Done.**
+6. Add tri-state structured constraints, dense retrieval, or model reranking only
+   for a measured remaining failure. **Deferred.**
 
 ## Evaluation order
 

@@ -15,7 +15,7 @@ message + Active State
     -> weighted Reciprocal Rank Fusion
     -> evidence, profile, and capped-popularity reranking
     -> unseen-first ordering, reset when intent changes
-    -> answerability-weighted clarification and recommendations
+    -> answerability-weighted clarification; one broad recovery after a declined field
     -> explanation and contract validation
 ```
 
@@ -51,15 +51,15 @@ The unmodified official evaluator currently reports:
 
 | Metric | Baseline | MVP |
 |---|---:|---:|
-| Hit Rate@10 | 0.125 | 0.985 |
-| MRR | 0.068 | 0.629 |
-| MTTC | 9.81 | 2.385 |
-| TechnicalScore | 0.107 | 0.854 |
+| Hit Rate@10 | 0.125 | 0.995 |
+| MRR | 0.068 | 0.635 |
+| MTTC | 9.81 | 2.245 |
+| TechnicalScore | 0.107 | 0.863 |
 
 These are development-set measurements, not private-set estimates. A 40-request
-local broad-query audit measured 2.12 s startup and 259 ms p95 response latency.
-The category-popularity route improved recall and first-hit turn while reducing
-MRR, so first-list ordering remains a tuning target.
+local broad-query audit measured 2.11 s startup and 261 ms p95 response latency.
+The retained full-union rerank and broad clarification recovery improved recall
+and first-hit turn. First-list ordering remains a tuning target.
 
 ## Semantic model status
 

@@ -2,11 +2,11 @@
 
 ## Prioritized work
 
-1. Audit the three remaining public misses and measure why their targets never
-   enter, or remain below, the reranked candidate depth.
+1. Design and ablate a target-blind long-tail candidate route for the one
+   remaining public miss; do not tune directly to its ASIN.
 2. Measure target recall at candidate depths 10, 50, 100, 160, and 800 per route.
-3. Recover the MRR lost by the category-popularity route without regressing its
-   Hit Rate and MTTC gains.
+3. Improve first-turn MRR without regressing the retained 0.995 Hit Rate and
+   2.245 MTTC.
 4. Tune route weights, rerank weights, popularity cap, question threshold, and
    candidate depth with target-ASIN-disjoint folds.
 5. Add explicit tri-state constraint evidence: match, contradiction, or unknown.

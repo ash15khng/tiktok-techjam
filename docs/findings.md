@@ -13,15 +13,18 @@ read public labels, evaluator helpers, hidden intent cards, or ground truth.
 | Unseen-first, without override reset | 0.835 | 0.538 | 3.76 | 0.724 |
 | Unseen-first, reset on override | 0.960 | 0.648 | 2.895 | 0.837 |
 | Category-conditioned popularity route | 0.985 | 0.629 | 2.385 | 0.854 |
+| Rerank depth 320 | 0.985 | 0.626 | 2.365 | 0.853 |
+| Broad recovery after unanswered field | 0.985 | 0.641 | 2.300 | 0.859 |
+| Broad recovery + full-union rerank | 0.995 | 0.635 | 2.245 | 0.863 |
 
 Final scenario results:
 
 | Scenario | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|
-| Buying | 0.988 | 0.633 | 1.81 |
+| Buying | 0.988 | 0.622 | 1.78 |
 | Browsing | 1.000 | 0.596 | 2.03 |
-| Intent Override | 0.967 | 0.738 | 4.20 |
-| Boundary | 0.900 | 0.542 | 4.40 |
+| Intent Override | 1.000 | 0.754 | 3.87 |
+| Boundary | 1.000 | 0.703 | 3.00 |
 
 Token usage is zero because the semantic provider is disabled.
 
@@ -47,6 +50,11 @@ latency yet.
 - Ranking a deeper category pool separately by rating count recovered broad-query
   targets that category BM25 lost in large tie groups. It increased Hit Rate to
   0.985 and reduced MTTC to 2.385 without a model or private information.
+- Asking one broad recovery question after an unanswered field raised MRR and
+  recovered the last Override miss; it also avoids a field-by-field interview.
+- Reranking the complete bounded candidate union recovered constraint-matching
+  products below the former rank-160 cutoff, bringing Boundary and Override to
+  1.000 Hit Rate on the small public slices.
 
 ## What did not work
 
@@ -58,23 +66,26 @@ latency yet.
   answerable, so candidate partitioning needed an answerability prior.
 - Category popularity traded some first-list precision for coverage: MRR fell
   from 0.648 to 0.629 even while the total TechnicalScore improved.
-- Three public sessions still miss: one long-tail Buying target and one target
-  each in Override and Boundary whose generic category/feature evidence does not
-  enter the current candidate union.
+- Reranking 320 instead of 160 candidates did not reach the deeper constraint
+  matches and slightly reduced TechnicalScore; the useful cutoff was the full
+  bounded union in this implementation.
+- One public Buying session still misses. Its low-volume novelty T-shirt remains
+  below rank 160 before extra constraints and below rank 350 afterward; forcing
+  it upward would require a general long-tail coverage method, not target tuning.
 - Treating Recommendation Exposure as permanent caused a severe Override
   regression because the evaluator may reveal the corrected intent after a
   target appeared under the old intent.
-- Boundary remains the weakest slice at 0.800 Hit Rate and needs a larger test set
-  before scenario-specific tuning.
+- Boundary has only ten public sessions. Its final 1.000 Hit Rate and high MRR
+  are encouraging but too small a slice for scenario-specific confidence.
 
 ## Feasibility
 
 A local 40-request audit measured:
 
-- catalog startup: 2.12 seconds;
-- mean response: 212 ms;
-- p95 response: 259 ms;
-- maximum response: 272 ms.
+- catalog startup: 2.11 seconds;
+- mean response: 211 ms;
+- p95 response: 261 ms;
+- maximum response: 279 ms.
 
 The p95 meets the initial 500 ms reliable-path budget in this local broad-query
 audit. This is not an end-to-end judging-machine guarantee; candidate depth and
