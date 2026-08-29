@@ -14,6 +14,7 @@ message + Active State
     -> field, title, category, and constraint FTS retrieval
     -> weighted Reciprocal Rank Fusion
     -> evidence, profile, and capped-popularity reranking
+    -> unseen-first ordering, reset when intent changes
     -> answerability-weighted clarification and recommendations
     -> explanation and contract validation
 ```
@@ -50,10 +51,10 @@ The unmodified official evaluator currently reports:
 
 | Metric | Baseline | MVP |
 |---|---:|---:|
-| Hit Rate@10 | 0.125 | 0.920 |
-| MRR | 0.068 | 0.628 |
-| MTTC | 9.81 | 3.26 |
-| TechnicalScore | 0.107 | 0.803 |
+| Hit Rate@10 | 0.125 | 0.960 |
+| MRR | 0.068 | 0.648 |
+| MTTC | 9.81 | 2.895 |
+| TechnicalScore | 0.107 | 0.837 |
 
 These are development-set measurements, not private-set estimates. A 40-request
 local audit measured 2.37 s startup and 470 ms p95 response latency.

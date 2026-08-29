@@ -102,6 +102,19 @@ class AgentIntegrationTest(unittest.TestCase):
         active = self.agent._agent.sessions.get("session").active
         self.assertIn("color", active.suppressed_attributes)
 
+    def test_next_turn_does_not_repeat_shown_products_when_alternatives_exist(self) -> None:
+        first = self.agent.respond("session", "I'm looking for shoes.", 1, 1)
+        second = self.agent.respond(
+            "session",
+            "Those options are not quite right yet. Ask me about one specific attribute.",
+            2,
+            1,
+        )
+
+        first_ids = {item["parent_asin"] for item in first["recommendations"]}
+        second_ids = {item["parent_asin"] for item in second["recommendations"]}
+        self.assertFalse(first_ids & second_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

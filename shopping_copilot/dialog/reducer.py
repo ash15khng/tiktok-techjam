@@ -18,6 +18,9 @@ class StateReducer:
     def apply(self, state: SessionState, frame: IntentFrame) -> SessionState:
         active = state.active
         if frame.override:
+            # A changed intent invalidates the meaning of earlier rejection:
+            # previously shown items may become relevant under the new request.
+            state.recommendation_exposure.clear()
             if frame.category_phrases:
                 active.preference_phrases.clear()
                 active.exclusions.clear()

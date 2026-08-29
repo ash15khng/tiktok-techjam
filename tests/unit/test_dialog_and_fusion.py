@@ -61,6 +61,22 @@ class DialogAndFusionTest(unittest.TestCase):
 
         self.assertEqual(state.active.preference_phrases, ["Imported", "leather"])
 
+    def test_override_resets_recommendation_exposure(self) -> None:
+        interpreter = MessageInterpreter()
+        reducer = StateReducer()
+        state = SessionState("session", {}, recommendation_exposure={"A", "B"})
+
+        reducer.apply(
+            state,
+            interpreter.parse(
+                "Actually, ignore my earlier preference. What I need is: leather.",
+                last_ask_attribute="feature",
+                context="",
+            ),
+        )
+
+        self.assertEqual(state.recommendation_exposure, set())
+
     def test_rrf_combines_routes_and_retains_ranks(self) -> None:
         results = {
             "field": [CatalogSearchResult("A", -2.0), CatalogSearchResult("B", -1.0)],

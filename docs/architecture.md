@@ -74,6 +74,7 @@ respond(session_id, message, turn, top_k)
     -> tri-state ConstraintEvaluator
     -> LightweightReranker
     -> optional Top-N cross-encoder reranker
+    -> RecommendationExposureController
     -> CandidateBelief normalization and Top10Confidence
     -> QuestionPolicy.select()
     -> ResponseGuard.build()
@@ -134,6 +135,7 @@ shopping_copilot/
 |-- ranking/
 |   |-- constraints.py               match / contradiction / unknown
 |   |-- reranker.py                  Deterministic scoring
+|   |-- exposure.py                  Across-turn novelty and override reset
 |   |-- belief.py                    CandidateBelief and Top10Confidence
 |   `-- semantic.py                  Optional cross-encoder reranker
 |
@@ -817,6 +819,19 @@ Top10Confidence = clip(
 
 This score is used for policy ordering and ablation. It must not be described as the probability that the hidden target is present unless separately calibrated and validated.
 
+### 13.1 Recommendation Exposure
+
+`SessionState` records every catalog product already returned during the current
+intent. After ranking, `RecommendationExposureController` preserves score order
+inside two partitions but places unseen candidates before previously shown ones.
+This avoids repeating an unchanged Top 10 after implicit or explicit rejection
+and expands useful catalog coverage across the ten-turn budget.
+
+An Intent Override clears Recommendation Exposure before retrieval. Earlier
+feedback was given under a different need, so a previously shown product may be
+valid under the corrected request. Exposure is a temporary ordering control,
+never a hard catalog exclusion.
+
 ## 14. QuestionPolicy
 
 ### 14.1 Action rule
@@ -956,6 +971,7 @@ Tracing is optional and never required by the Agent.
 | RRF | missing generator, weights, deterministic fusion |
 | retrieval assessment | agreement, entropy, NQC, margin, perturbation stability |
 | reranker | contradiction ordering, missing-data neutrality, capped profile prior |
+| recommendation exposure | unseen-first stability, repeat suppression, override reset |
 | question policy | useful feature, repeated attribute, boundary, turn 10 |
 | response guard | invalid/duplicate ASIN, Top-10 cap, invalid usage |
 
@@ -971,6 +987,8 @@ Measure exact operation accuracy, slot precision/recall/F1, relation accuracy, a
 - Browsing: broad candidates accompany an informative clarification.
 - Intent Override: the stale value is absent before next retrieval.
 - Boundary: `ANY` suppresses the slot and prevents repetition.
+- Rejection: previously shown products move behind unseen candidates.
+- Intent Override: exposure resets because the active need changed.
 
 The official `tests/test_evaluator.py` remains unchanged.
 
@@ -1065,6 +1083,8 @@ Add dense retrieval, cross encoder, or LLM parsing only when a retained experime
 - all outputs satisfy the machine-readable contract;
 - every normal turn returns up to ten valid unique ASINs;
 - corrections replace stale state before retrieval;
+- already rejected recommendations are not repeated while unseen candidates exist;
+- Intent Override resets earlier Recommendation Exposure;
 - `ANY` suppresses its slot and future question;
 - candidate generators have marginal-recall measurements;
 - uniform, hard, and soft routing have controlled comparisons;

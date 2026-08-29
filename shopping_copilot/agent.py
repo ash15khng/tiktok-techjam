@@ -12,6 +12,7 @@ from shopping_copilot.dialog.policy import QuestionPolicy
 from shopping_copilot.dialog.reducer import StateReducer
 from shopping_copilot.dialog.store import SessionStore
 from shopping_copilot.ranking.explanations import explain
+from shopping_copilot.ranking.exposure import unseen_first
 from shopping_copilot.ranking.reranker import LightweightReranker
 from shopping_copilot.retrieval.fusion import assess_results, reciprocal_rank_fusion
 from shopping_copilot.retrieval.lexical import LexicalRetriever
@@ -55,6 +56,7 @@ class ShoppingAgent:
             fused = reciprocal_rank_fusion(generated, plan.generator_weights, k=self.config.rrf_k)
             assessment = assess_results(generated, fused)
             ranked = self.reranker.rank(fused, state.active, state.customer_profile)
+            ranked = unseen_first(ranked, state.recommendation_exposure)
             question = self.question_policy.choose(state, ranked, assessment, turn)
             recommendations = tuple(item.parent_asin for item in ranked)
             message = explain(state.active)
@@ -64,7 +66,7 @@ class ShoppingAgent:
             if question.ask_attribute:
                 state.active.asked_attributes.append(question.ask_attribute)
             state.last_recommendations = recommendations[:10]
-            return self.guard.build(
+            response = self.guard.build(
                 message=message,
                 ask_attribute=question.ask_attribute,
                 recommendations=recommendations,
@@ -72,6 +74,10 @@ class ShoppingAgent:
                 prompt_tokens=frame.prompt_tokens,
                 completion_tokens=frame.completion_tokens,
             )
+            state.recommendation_exposure.update(
+                item["parent_asin"] for item in response["recommendations"]
+            )
+            return response
         except Exception:
             # A component failure must still produce valid frozen-catalog IDs.
             fallback_terms = tokenize(user_message)[: self.config.max_query_terms]

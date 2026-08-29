@@ -42,6 +42,7 @@ class SessionState:
     active: ActiveState = field(default_factory=ActiveState)
     last_ask_attribute: str | None = None
     last_recommendations: tuple[str, ...] = ()
+    recommendation_exposure: set[str] = field(default_factory=set)
     turn_count: int = 0
     last_feedback_negative: bool = False
 

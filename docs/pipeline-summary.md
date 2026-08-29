@@ -27,6 +27,7 @@ respond(message)
     -> weighted Reciprocal Rank Fusion
     -> constraint match / contradiction / unknown evaluation
     -> lightweight reranking; optional dense/cross-encoder stage
+    -> unseen-first Recommendation Exposure control
     -> CandidateBelief + target-blind Top10Confidence
     -> posterior-weighted clarification selection
     -> ResponseGuard validates exact ASINs and API shape
@@ -47,6 +48,7 @@ respond(message)
 | Fusion | Weighted Reciprocal Rank Fusion, `k=60` |
 | Constraints | Three-valued logic: match, contradiction, unknown |
 | Reranking | RRF + constraint support + raw phrase match + capped popularity |
+| Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
 | Question selection | Candidate-belief-weighted partition gain and simulated rank gain |
 | Optional semantics | MiniLM embeddings and Top-30 cross encoder with timeout/fallback |
 
@@ -69,6 +71,7 @@ Optional measured stages use:
 - missing product metadata is `unknown`, never contradiction.
 - raw feature text remains searchable even when it cannot be safely normalized.
 - an Intent Override deactivates stale values before retrieval.
+- an Intent Override resets Recommendation Exposure because earlier rejection used a different need.
 - `ANY` clears and suppresses an attribute and prevents repeat questions.
 - ask-and-recommend preserves the current hit opportunity, so the main question is which attribute to ask.
 
