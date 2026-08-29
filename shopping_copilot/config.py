@@ -24,7 +24,7 @@ class MVPConfig:
     semantic_timeout_seconds: float = 6.0
     semantic_max_input_chars: int = 4_000
     semantic_max_output_tokens: int = 220
-    semantic_max_calls_per_run: int = 64
+    semantic_max_calls_per_run: int = 16
     semantic_cache_size: int = 256
     semantic_min_confidence: float = 0.55
     semantic_max_rewrite_terms: int = 12
