@@ -30,7 +30,7 @@ Final scenario results:
 
 Token usage is zero because the semantic provider is disabled.
 
-The optional OpenAI Responses API adapter is contract-tested with mocked HTTP
+The optional SoCLaaS Responses-compatible adapter is contract-tested with mocked HTTP
 responses only. It is not part of the reported score and has no measured cost or
 latency yet.
 

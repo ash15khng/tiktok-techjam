@@ -20,7 +20,7 @@ reset(profile)
 respond(message)
     -> deterministic category/payload/correction/exclusion/ANY parsing
     -> explicit-or-contextual short reply resolution with provenance
-    -> optional gated, schema-constrained semantic hints
+    -> optional gated, locally JSON-validated semantic hints
     -> IntentFrame of typed SlotUpdates and preserved phrases
     -> StateReducer creates current ActiveState
     -> sigmoid focus score from current category/constraint evidence
@@ -48,13 +48,13 @@ respond(message)
 | Reranking | Full bounded union: RRF + IDF/phrase coverage + capped popularity + missing-neutral price range |
 | Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
 | Question selection | Top-50 coverage/Gini partition value plus one broad unanswered-question recovery |
-| Optional semantics | OpenAI Responses schema adapter, gated and disabled without explicit environment opt-in |
+| Optional semantics | SoCLaaS Responses-compatible adapter, gated and disabled without explicit environment opt-in |
 
 ## Chosen technologies
 
 The reliable path uses Python 3.10+, the standard library, SQLite FTS5, JSONL, dataclasses, enums, protocols, and `unittest`. It has no required network, LLM, GPU, or vector-database dependency.
 
-The optional semantic adapter uses the OpenAI Responses API behind a protocol
+The optional semantic adapter uses a SoCLaaS Responses-compatible API behind a protocol
 with deterministic fallback. It has mocked contract tests only. NumPy/MiniLM
 dense retrieval and a Top-N cross encoder remain unimplemented alternatives.
 

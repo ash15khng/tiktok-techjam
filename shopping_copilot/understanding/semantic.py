@@ -1,4 +1,4 @@
-"""Optional schema-constrained semantic interpretation via the Responses API."""
+"""Optional JSON-validated interpretation via a Responses-compatible API."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from collections.abc import Callable
 
 from shopping_copilot.catalog.normalization import tokenize
@@ -19,9 +20,9 @@ from shopping_copilot.contracts import (
     SemanticParserError,
     SemanticSlotHypothesis,
 )
+from shopping_copilot.environment import load_runtime_environment
 
 
-OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 SUBJECTIVE_LANGUAGE_RE = re.compile(
     r"\b(?:comfortable|comfort|polished|professional|versatile|stylish|subtle|"
     r"bold|durable|lightweight|breathable|premium|minimal|modest|formal|casual|"
@@ -70,7 +71,13 @@ SEMANTIC_SCHEMA = {
 }
 
 INSTRUCTIONS = """You interpret customer language for catalog search.
-Return only the requested structured output. Never generate product IDs.
+Return exactly one JSON object with no markdown or surrounding commentary:
+{"query_rewrites": [string], "subjective_needs": [string],
+"slot_hypotheses": [{"attribute": string, "value": string,
+"confidence": number from 0 to 1, "evidence": exact customer quote}]}
+All three arrays are required and may be empty. Attribute must be one of:
+category, material, color, size, style, brand, budget, feature, use_case, other.
+Never generate product IDs.
 Keep rewrites short and catalog-searchable. Preserve the customer's meaning,
 negation, alternatives, and uncertainty. Do not invent brands, materials,
 budgets, sizes, or preferences. Slot hypotheses are soft proposals supported by
@@ -98,22 +105,24 @@ def _default_transport(request: urllib.request.Request, timeout: float) -> dict:
         raise SemanticParserError(f"semantic provider unavailable: {type(error).__name__}") from None
 
 
-class OpenAIResponsesSemanticParser:
-    """Small HTTP adapter so the reliable path has no SDK dependency."""
+class ResponsesSemanticParser:
+    """Small Responses-compatible HTTP adapter with no SDK dependency."""
 
     def __init__(
         self,
         *,
         api_key: str,
+        base_url: str,
         model: str,
         timeout_seconds: float,
         max_input_chars: int,
         max_output_tokens: int,
         transport: Transport | None = None,
     ) -> None:
-        if not api_key.strip() or not model.strip():
-            raise ValueError("api_key and model are required")
+        if not api_key.strip() or not base_url.strip() or not model.strip():
+            raise ValueError("api_key, base_url, and model are required")
         self._api_key = api_key
+        self.responses_url = _responses_url(base_url)
         self.model = model
         self.timeout_seconds = timeout_seconds
         self.max_input_chars = max_input_chars
@@ -131,20 +140,13 @@ class OpenAIResponsesSemanticParser:
         payload = {
             "model": self.model,
             "instructions": INSTRUCTIONS,
-            "input": [{"role": "user", "content": [{"type": "input_text", "text": input_value}]}],
-            "text": {
-                "format": {
-                    "type": "json_schema",
-                    "name": "shopping_intent",
-                    "strict": True,
-                    "schema": SEMANTIC_SCHEMA,
-                }
-            },
+            "input": input_value,
+            "stream": False,
             "max_output_tokens": self.max_output_tokens,
-            "store": False,
+            "temperature": 0.0,
         }
         request = urllib.request.Request(
-            OPENAI_RESPONSES_URL,
+            self.responses_url,
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -172,7 +174,7 @@ class OpenAIResponsesSemanticParser:
         if not isinstance(output_text, str):
             raise SemanticParserError("semantic response contained no output text")
         try:
-            value = json.loads(output_text)
+            value = json.loads(_strip_json_fence(output_text))
         except json.JSONDecodeError:
             raise SemanticParserError("semantic response was not valid JSON") from None
         if not isinstance(value, dict):
@@ -233,21 +235,58 @@ class GatedSemanticParser:
 
 
 def semantic_parser_from_environment(config: MVPConfig) -> SemanticParser:
+    provider = configured_responses_parser_from_environment(config)
+    return GatedSemanticParser(provider) if provider is not None else DisabledSemanticParser()
+
+
+def configured_responses_parser_from_environment(config: MVPConfig) -> ResponsesSemanticParser | None:
+    """Build an ungated provider for diagnostics, or return ``None`` safely."""
+
+    load_runtime_environment()
     if os.environ.get("SHOPPING_COPILOT_LLM_ENABLED", "").casefold() not in {"1", "true", "yes"}:
-        return DisabledSemanticParser()
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        return None
+    api_key = os.environ.get("SOCLAAS_API_KEY", "").strip()
+    base_url = os.environ.get("SOCLAAS_BASE_URL", "").strip()
     model = os.environ.get("SHOPPING_COPILOT_LLM_MODEL", "").strip()
-    if not api_key or not model:
-        return DisabledSemanticParser()
-    return GatedSemanticParser(
-        OpenAIResponsesSemanticParser(
+    if not api_key or not base_url or not model:
+        return None
+    try:
+        return ResponsesSemanticParser(
             api_key=api_key,
+            base_url=base_url,
             model=model,
             timeout_seconds=config.semantic_timeout_seconds,
             max_input_chars=config.semantic_max_input_chars,
             max_output_tokens=config.semantic_max_output_tokens,
         )
-    )
+    except ValueError:
+        return None
+
+
+# Compatibility alias for collaborators importing the earlier adapter name.
+OpenAIResponsesSemanticParser = ResponsesSemanticParser
+
+
+def _responses_url(base_url: str) -> str:
+    normalized = base_url.strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("base_url must be an absolute HTTP(S) URL")
+    if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("remote base_url must use HTTPS")
+    return normalized if parsed.path.rstrip("/").endswith("/responses") else f"{normalized}/responses"
+
+
+def _strip_json_fence(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned.startswith("```"):
+        return cleaned
+    lines = cleaned.splitlines()
+    if len(lines) < 3 or lines[-1].strip() != "```":
+        return cleaned
+    if lines[0].strip().casefold() not in {"```", "```json"}:
+        return cleaned
+    return "\n".join(lines[1:-1]).strip()
 
 
 def _validated_strings(value: object, *, limit: int, max_length: int) -> tuple[str, ...]:

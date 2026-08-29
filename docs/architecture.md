@@ -50,7 +50,7 @@ These dependencies are introduced only after an ablation demonstrates a specific
 | NumPy | Current compatible release | Exact vector similarity over 50,000 products | Skip dense generator |
 | Sentence Transformers | `sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions | Product and subjective-query embeddings | Field-weighted FTS |
 | Cross encoder | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Rerank at most 30 candidates | Lightweight reranker |
-| OpenAI Responses API or local LLM | Provider behind `SemanticParser` protocol | Schema-constrained interpretation of unresolved clauses | Deterministic interpreter |
+| SoCLaaS Responses-compatible API or local LLM | Provider behind `SemanticParser` protocol | JSON-validated interpretation of unresolved clauses | Deterministic interpreter |
 
 Dense vectors are stored as normalized `float32` arrays. A `50_000 x 384` matrix is approximately 73 MiB, so exact NumPy dot-product retrieval is simpler than an infrastructure-heavy vector database. Model artifacts are built locally and are not committed unless the team explicitly chooses to distribute them.
 
@@ -63,7 +63,7 @@ reset(session_id, user_profile)
 respond(session_id, message, turn, top_k)
     -> MessageInterpreter.parse(message, last question, Context Snapshot)
     -> ContextualReplyResolver: explicit evidence > immediate question > fallback
-    -> optional gated schema-constrained semantic hints
+    -> optional gated, locally validated semantic hints
     -> StateReducer.apply(IntentFrame)
     -> RetrievalPlanner blends focused/exploratory route weights
     -> field + title + category + category-popularity + constraint FTS
@@ -488,9 +488,11 @@ The optional semantic adapter separately caps model-proposed confidence at
 `GatedSemanticParser` calls a provider only for subjective or structurally
 complex language. Short attribute replies, explicit corrections, Boundary
 answers, and simulator-style constraint payloads remain deterministic. The
-concrete `OpenAIResponsesSemanticParser` sends a compact Context Snapshot to
-`POST /v1/responses` with `store=false`, a strict JSON schema, bounded input and
-output, and the configured timeout.
+concrete `ResponsesSemanticParser` sends a compact Context Snapshot to the
+configured SoCLaaS `/v1/responses` endpoint with bounded input/output, zero
+temperature, and the configured timeout. Because the gateway does not list
+`text.format` among its supported fields, the prompt requests one JSON object
+and the adapter validates it locally.
 
 The schema returns short query rewrites, subjective needs, and soft slot
 hypotheses. It cannot return product identifiers. Model confidence is capped at
@@ -943,10 +945,17 @@ Runtime constants are frozen dataclasses in `shopping_copilot/config.py`. Each e
 
 Secrets are read only from environment variables inside optional provider adapters. `.env` remains ignored; only `.env.example` may be committed. The reliable path requires no secret.
 
-The optional Responses API adapter is enabled only when
-`SHOPPING_COPILOT_LLM_ENABLED` is true and both `OPENAI_API_KEY` and an explicit
-`SHOPPING_COPILOT_LLM_MODEL` are set. There is deliberately no implicit model
-choice. Without complete opt-in the factory returns `DisabledSemanticParser`.
+The optional Responses-compatible adapter is enabled only when
+`SHOPPING_COPILOT_LLM_ENABLED` is true and `SOCLAAS_API_KEY`,
+`SOCLAAS_BASE_URL`, and an explicit `SHOPPING_COPILOT_LLM_MODEL` are set. There
+is deliberately no implicit credential or endpoint. Without complete opt-in the
+factory returns `DisabledSemanticParser`.
+
+The runtime loads only those approved values from the ignored repository `.env`
+or a file selected through `SHOPPING_COPILOT_ENV_FILE`; OS variables take
+precedence. Git ignore is not an access-control boundary, so credentials that
+must not reside in the workspace are injected by the user's shell or secret
+manager.
 
 Optional model calls require an explicit timeout, input-size limit, schema validation, token accounting, deterministic fallback, and provider/model identifier in the run report.
 

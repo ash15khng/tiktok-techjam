@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from shopping_copilot.config import MVPConfig
 from shopping_copilot.contracts import DisabledSemanticParser, SemanticInterpretation, SemanticParserError
 from shopping_copilot.understanding.semantic import (
     GatedSemanticParser,
-    OpenAIResponsesSemanticParser,
+    ResponsesSemanticParser,
     semantic_parser_from_environment,
     should_call_semantic_parser,
 )
@@ -53,8 +55,9 @@ class SemanticParserTest(unittest.TestCase):
                 }
             )
 
-        parser = OpenAIResponsesSemanticParser(
+        parser = ResponsesSemanticParser(
             api_key="test-secret",
+            base_url="https://gateway.example/v1",
             model="explicit-test-model",
             timeout_seconds=3.5,
             max_input_chars=4000,
@@ -71,16 +74,22 @@ class SemanticParserTest(unittest.TestCase):
         self.assertEqual(result.prompt_tokens, 37)
         self.assertEqual(result.completion_tokens, 19)
         self.assertEqual(result.slot_hypotheses[0].confidence, 0.70)
-        self.assertEqual(observed["url"], "https://api.openai.com/v1/responses")
+        self.assertEqual(observed["url"], "https://gateway.example/v1/responses")
         self.assertEqual(observed["authorization"], "Bearer test-secret")
         self.assertEqual(observed["timeout"], 3.5)
-        self.assertFalse(observed["body"]["store"])
-        self.assertTrue(observed["body"]["text"]["format"]["strict"])
+        self.assertEqual(
+            set(observed["body"]),
+            {"model", "instructions", "input", "stream", "max_output_tokens", "temperature"},
+        )
+        self.assertFalse(observed["body"]["stream"])
+        self.assertEqual(observed["body"]["temperature"], 0.0)
+        self.assertIsInstance(observed["body"]["input"], str)
         self.assertNotIn("test-secret", json.dumps(observed["body"]))
 
     def test_malformed_response_raises_safe_provider_error(self) -> None:
-        parser = OpenAIResponsesSemanticParser(
+        parser = ResponsesSemanticParser(
             api_key="secret",
+            base_url="https://gateway.example/v1/responses",
             model="model",
             timeout_seconds=1,
             max_input_chars=100,
@@ -112,11 +121,72 @@ class SemanticParserTest(unittest.TestCase):
         self.assertEqual(complex_result, SemanticInterpretation())
         self.assertEqual(provider.calls, 1)
 
+    def test_single_json_code_fence_is_tolerated(self) -> None:
+        payload = {
+            "query_rewrites": [],
+            "subjective_needs": ["comfortable"],
+            "slot_hypotheses": [],
+        }
+        response = completed_response(payload)
+        response["output"][1]["content"][0]["text"] = f"```json\n{json.dumps(payload)}\n```"
+        parser = ResponsesSemanticParser(
+            api_key="secret",
+            base_url="https://gateway.example/v1",
+            model="model",
+            timeout_seconds=1,
+            max_input_chars=100,
+            max_output_tokens=100,
+            transport=lambda request, timeout: response,
+        )
+
+        result = parser.interpret("comfortable everyday shoes", "category=shoes")
+
+        self.assertEqual(result.subjective_needs, ("comfortable",))
+
     def test_environment_factory_is_disabled_without_complete_opt_in(self) -> None:
-        with patch.dict(os.environ, {"SHOPPING_COPILOT_LLM_ENABLED": "1"}, clear=True):
-            parser = semantic_parser_from_environment(MVPConfig())
+        with tempfile.TemporaryDirectory() as directory:
+            missing = str(Path(directory) / "missing.env")
+            with patch.dict(
+                os.environ,
+                {
+                    "SHOPPING_COPILOT_ENV_FILE": missing,
+                    "SHOPPING_COPILOT_LLM_ENABLED": "1",
+                },
+                clear=True,
+            ):
+                parser = semantic_parser_from_environment(MVPConfig())
 
         self.assertIsInstance(parser, DisabledSemanticParser)
+
+    def test_environment_factory_uses_soclaas_endpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            missing = str(Path(directory) / "missing.env")
+            with patch.dict(
+                os.environ,
+                {
+                    "SHOPPING_COPILOT_ENV_FILE": missing,
+                    "SHOPPING_COPILOT_LLM_ENABLED": "1",
+                    "SHOPPING_COPILOT_LLM_MODEL": "llama3.1:8b",
+                    "SOCLAAS_BASE_URL": "https://gateway.example/v1",
+                    "SOCLAAS_API_KEY": "secret",
+                },
+                clear=True,
+            ):
+                parser = semantic_parser_from_environment(MVPConfig())
+
+        self.assertIsInstance(parser, GatedSemanticParser)
+        self.assertEqual(parser.provider.responses_url, "https://gateway.example/v1/responses")
+
+    def test_remote_plain_http_endpoint_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            ResponsesSemanticParser(
+                api_key="secret",
+                base_url="http://gateway.example/v1",
+                model="model",
+                timeout_seconds=1,
+                max_input_chars=100,
+                max_output_tokens=100,
+            )
 
     def test_semantic_gate_targets_subjective_language(self) -> None:
         self.assertTrue(

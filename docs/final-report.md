@@ -61,8 +61,9 @@ sessions. One of 200 public targets remains unfound.
 ## Model, cost, and feasibility
 
 The scored system uses no model API: reported tokens are zero and marginal API
-cost is $0. A schema-constrained OpenAI Responses API adapter is implemented but
-disabled unless an enable flag, API key, and explicit model are all supplied.
+cost is $0. A locally validated SoCLaaS Responses-compatible adapter is
+implemented but disabled unless an enable flag, API key, HTTPS base URL, and
+explicit model are all supplied.
 Only mocked provider tests exist, so no LLM quality, cost, or latency claim is
 made.
 
