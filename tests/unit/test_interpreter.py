@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from shopping_copilot.contracts import SemanticInterpretation, SemanticSlotHypothesis
 from shopping_copilot.understanding.interpreter import MessageInterpreter
 from shopping_copilot.understanding.models import Attribute
 
@@ -95,6 +96,33 @@ class MessageInterpreterTest(unittest.TestCase):
 
         self.assertEqual(frame.category_phrases, ("boots",))
         self.assertEqual(frame.slot_updates[0].attribute, Attribute.CATEGORY)
+
+    def test_grounded_semantic_hints_become_soft_search_evidence(self) -> None:
+        class StaticSemanticParser:
+            def interpret(self, message: str, context: str) -> SemanticInterpretation:
+                return SemanticInterpretation(
+                    query_rewrites=("breathable formal wedding shoes",),
+                    subjective_needs=("comfortable in humid weather",),
+                    slot_hypotheses=(
+                        SemanticSlotHypothesis("feature", "breathable", 0.70, "humid"),
+                    ),
+                    prompt_tokens=21,
+                    completion_tokens=9,
+                )
+
+        interpreter = MessageInterpreter(StaticSemanticParser())
+        frame = interpreter.parse(
+            "Something polished but comfortable for a humid outdoor wedding.",
+            last_ask_attribute=None,
+            context="category=shoes",
+        )
+
+        self.assertEqual(frame.query_rewrites, ("breathable formal wedding shoes",))
+        self.assertIn("breathable", frame.preference_phrases)
+        semantic_updates = [update for update in frame.slot_updates if update.source == "semantic"]
+        self.assertEqual(len(semantic_updates), 1)
+        self.assertEqual(semantic_updates[0].attribute, Attribute.FEATURE)
+        self.assertEqual(frame.prompt_tokens, 21)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shopping_copilot.contracts import ALLOWED_ATTRIBUTES
+from shopping_copilot.agent import ShoppingAgent
+from shopping_copilot.contracts import ALLOWED_ATTRIBUTES, SemanticInterpretation, SemanticSlotHypothesis
 from starter.agent import Agent
 
 
@@ -135,6 +136,36 @@ class AgentIntegrationTest(unittest.TestCase):
         self.agent.respond("session", "Example", 1, 10)
 
         self.assertEqual(state.active.slot_values["brand"], ["Example"])
+
+    def test_semantic_rewrite_and_grounded_feature_affect_live_retrieval_state(self) -> None:
+        class StaticSemanticParser:
+            def interpret(self, message: str, context: str) -> SemanticInterpretation:
+                return SemanticInterpretation(
+                    query_rewrites=("breathable cotton formal wedding shoes",),
+                    subjective_needs=("comfortable in humidity",),
+                    slot_hypotheses=(
+                        SemanticSlotHypothesis("feature", "breathable", 0.70, "humid"),
+                    ),
+                    prompt_tokens=15,
+                    completion_tokens=6,
+                )
+
+        catalog_path = Path(self.temporary_directory.name) / "catalog.jsonl"
+        agent = ShoppingAgent(catalog_path, semantic_parser=StaticSemanticParser())
+        agent.reset("semantic", {"preference_tags": []})
+
+        response = agent.respond(
+            "semantic",
+            "Something polished but comfortable for a humid outdoor wedding.",
+            1,
+            10,
+        )
+
+        active = agent.sessions.get("semantic").active
+        self.assertIn("breathable cotton formal wedding shoes", active.preference_phrases)
+        self.assertEqual(active.slot_values["feature"], ["breathable"])
+        self.assertEqual(response["recommendations"][0]["parent_asin"], "A")
+        self.assertEqual(response["usage"], {"prompt_tokens": 15, "completion_tokens": 6})
 
 
 if __name__ == "__main__":

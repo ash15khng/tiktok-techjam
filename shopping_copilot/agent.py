@@ -32,7 +32,11 @@ class ShoppingAgent:
         self.config = config or MVPConfig()
         self.catalog = CatalogStore(catalog_path)
         self.sessions = SessionStore()
-        self.interpreter = MessageInterpreter(semantic_parser or semantic_parser_from_environment(self.config))
+        self.interpreter = MessageInterpreter(
+            semantic_parser or semantic_parser_from_environment(self.config),
+            semantic_min_confidence=self.config.semantic_min_confidence,
+            semantic_max_rewrite_terms=self.config.semantic_max_rewrite_terms,
+        )
         self.reducer = StateReducer()
         self.planner = RetrievalPlanner(self.config)
         self.retriever = LexicalRetriever(self.catalog, self.config)

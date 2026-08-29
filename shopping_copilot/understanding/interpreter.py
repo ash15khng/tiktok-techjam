@@ -11,6 +11,7 @@ from shopping_copilot.understanding.contextual import (
     resolve_reply_value,
 )
 from shopping_copilot.understanding.models import Attribute, IntentFrame, SlotUpdate
+from shopping_copilot.understanding.semantic_grounding import ground_semantic_interpretation
 
 
 CATEGORY_RE = re.compile(
@@ -58,8 +59,16 @@ def _split_customer_tail(value: str) -> tuple[str, ...]:
 
 
 class MessageInterpreter:
-    def __init__(self, semantic_parser: SemanticParser | None = None) -> None:
+    def __init__(
+        self,
+        semantic_parser: SemanticParser | None = None,
+        *,
+        semantic_min_confidence: float = 0.55,
+        semantic_max_rewrite_terms: int = 12,
+    ) -> None:
         self.semantic_parser = semantic_parser or DisabledSemanticParser()
+        self.semantic_min_confidence = semantic_min_confidence
+        self.semantic_max_rewrite_terms = semantic_max_rewrite_terms
 
     def parse(self, message: str, *, last_ask_attribute: str | None, context: str) -> IntentFrame:
         raw = str(message or "")
@@ -182,6 +191,17 @@ class MessageInterpreter:
             slot_updates.append(SlotUpdate(no_preference, "set_any", "", raw, source))
 
         semantic = self.semantic_parser.interpret(raw, context)
+        grounded_semantic = ground_semantic_interpretation(
+            semantic,
+            raw_message=raw,
+            context=context,
+            deterministic_updates=tuple(slot_updates),
+            override=override,
+            min_confidence=self.semantic_min_confidence,
+            max_rewrite_terms=self.semantic_max_rewrite_terms,
+        )
+        preference_values.extend(grounded_semantic.preference_phrases)
+        slot_updates.extend(grounded_semantic.slot_updates)
         dialogue_acts = ["inform"]
         if override:
             dialogue_acts.append("correct")
@@ -197,9 +217,9 @@ class MessageInterpreter:
             override=override,
             negative_feedback=negative_feedback,
             no_preference_attribute=no_preference,
-            query_rewrites=semantic.query_rewrites,
-            subjective_needs=semantic.subjective_needs,
-            semantic_hypotheses=semantic.slot_hypotheses,
+            query_rewrites=grounded_semantic.query_rewrites,
+            subjective_needs=grounded_semantic.subjective_needs,
+            semantic_hypotheses=grounded_semantic.slot_hypotheses,
             prompt_tokens=semantic.prompt_tokens,
             completion_tokens=semantic.completion_tokens,
         )

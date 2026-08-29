@@ -38,7 +38,7 @@ class StateReducer:
             if frame.override and any(update.attribute.value == "category" for update in frame.slot_updates):
                 active.category_phrases.clear()
             _append_unique(active.category_phrases, frame.category_phrases)
-        _append_unique(active.preference_phrases, (*frame.preference_phrases, *frame.query_rewrites, *frame.subjective_needs))
+        _append_unique(active.preference_phrases, (*frame.preference_phrases, *frame.query_rewrites))
         _append_unique(active.exclusions, frame.exclusions)
         for update in frame.slot_updates:
             attribute = update.attribute.value
