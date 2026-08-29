@@ -4,6 +4,7 @@ Build an AI shopping agent that asks useful follow-up questions and recommends t
 
 Project documentation:
 
+- Judge-oriented project story, results, and quick start: [`README_SUBMISSION.md`](README_SUBMISSION.md)
 - Quick pipeline and technology summary: [`docs/pipeline-summary.md`](docs/pipeline-summary.md)
 - Full architecture, module boundaries, and five-person workstream map: [`docs/architecture.md`](docs/architecture.md)
 - MVP boundaries and canonical commands: [`docs/mvp.md`](docs/mvp.md)
