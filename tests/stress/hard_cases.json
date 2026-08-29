@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "frozen_on": "2026-08-29",
+  "selection_rule": "Targets exist in the frozen catalog and are absent from the 200 public targets.",
+  "cases": [
+    {
+      "case_id": "implicit-sensitive-ears",
+      "challenge": "implicit need and multi-turn refinement",
+      "target_parent_asin": "B08MX457SY",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "I need earrings, but cheap metal usually makes my ears itch.",
+        "Rose gold please, ideally a mixed pack of tiny studs and hoops."
+      ]
+    },
+    {
+      "case_id": "misspelled-hypoallergenic",
+      "challenge": "misspelling and conjunction",
+      "target_parent_asin": "B08MX457SY",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "Looking for a rose gold earring multipack that is hypoalergenic and nikel free, with both studs and hoops."
+      ]
+    },
+    {
+      "case_id": "post-surgery-front-close",
+      "challenge": "implicit accessibility requirement",
+      "target_parent_asin": "B09TQFV6DW",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "After shoulder surgery I cannot reach behind me. I need a high-support sports bra I can fasten in front, without underwire."
+      ]
+    },
+    {
+      "case_id": "cold-dry-ski-socks",
+      "challenge": "experiential need mapped to technical features",
+      "target_parent_asin": "B0BGJ81PNQ",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "I want knee-high ski socks that keep my feet warm and dry on the slopes without getting smelly."
+      ]
+    },
+    {
+      "case_id": "snow-trail-pants",
+      "challenge": "weather and activity composition",
+      "target_parent_asin": "B09MK2LZ5V",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "Need women's trail pants for hours in wet snow: warm inside, rain stays out, and enough stretch to move."
+      ]
+    },
+    {
+      "case_id": "packable-rain-commute",
+      "challenge": "short implicit category and exclusions",
+      "target_parent_asin": "B095Z6ZN3R",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "Something I can throw in a backpack for a wet and windy commute. Men's, not a heavy winter coat."
+      ]
+    },
+    {
+      "case_id": "flexible-travel-loafers",
+      "challenge": "colloquial lightweight and flexibility",
+      "target_parent_asin": "B09GF1RWH5",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "I am after men's casual slip-ons for travel that weigh almost nothing and bend naturally with my feet."
+      ]
+    },
+    {
+      "case_id": "intent-override-to-loafers",
+      "challenge": "category and constraint override",
+      "target_parent_asin": "B09GF1RWH5",
+      "profile": {"preference_tags": []},
+      "score_from_turn": 2,
+      "messages": [
+        "I need sturdy black work boots with a rigid sole.",
+        "Actually forget the boots. Make that men's casual slip-ons that are extremely light and flex with my feet."
+      ]
+    },
+    {
+      "case_id": "moon-sunflower-sensitive-skin",
+      "challenge": "symbolic gift language and sensitivity",
+      "target_parent_asin": "B0BG21X73H",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "I need a small moon-and-sunflower necklace for someone who is my sunshine. Her skin reacts to nickel."
+      ]
+    },
+    {
+      "case_id": "convertible-pearl-earrings",
+      "challenge": "multi-function product description",
+      "target_parent_asin": "B081CML5WK",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "Looking for long silver earrings where the tassel chain comes off so the pearl studs can be worn alone."
+      ]
+    },
+    {
+      "case_id": "wide-sparkly-wedding-heels",
+      "challenge": "occasion, fit, and style composition",
+      "target_parent_asin": "B07F8P5BNM",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "I need wide-fit satin peep-toe shoes for a wedding, with a medium heel and a little sparkle."
+      ]
+    },
+    {
+      "case_id": "puddle-proof-kids-boots",
+      "challenge": "colloquial waterproof need",
+      "target_parent_asin": "B094S49FB2",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "My daughter wants fun boots for jumping in puddles; they must keep her feet dry and not slip in mud."
+      ]
+    },
+    {
+      "case_id": "reusable-adult-ponchos",
+      "challenge": "quantity and boundary contrast",
+      "target_parent_asin": "B071WPG92J",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "Need two reusable rain ponchos for adults, lightweight rather than disposable emergency sheets."
+      ]
+    },
+    {
+      "case_id": "removable-tassel-followup",
+      "challenge": "underspecified opening followed by natural detail",
+      "target_parent_asin": "B081CML5WK",
+      "profile": {"preference_tags": []},
+      "messages": [
+        "I am browsing for silver earrings that can change between two looks.",
+        "The long chain should detach and leave a simple pearl stud."
+      ]
+    }
+  ]
+}
