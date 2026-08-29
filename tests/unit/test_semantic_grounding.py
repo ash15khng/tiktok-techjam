@@ -61,6 +61,31 @@ class SemanticGroundingTest(unittest.TestCase):
         self.assertEqual(grounded.query_rewrites, ())
         self.assertEqual(grounded.slot_updates, ())
 
+    def test_live_probe_shape_retains_rewrites_but_rejects_unsupported_inferences(self) -> None:
+        semantic = SemanticInterpretation(
+            query_rewrites=("polished shoes", "outdoor wedding shoes"),
+            subjective_needs=("comfortable", "humidity resistant"),
+            slot_hypotheses=(
+                SemanticSlotHypothesis("category", "wedding shoes", 0.70, "humid outdoor wedding"),
+                SemanticSlotHypothesis("material", "breathable material", 0.70, "humid outdoor wedding"),
+                SemanticSlotHypothesis("color", "neutral color", 0.60, "polished shoes"),
+            ),
+        )
+
+        grounded = ground_semantic_interpretation(
+            semantic,
+            raw_message="I need comfortable, polished shoes for a humid outdoor wedding.",
+            context="category=shoes",
+            deterministic_updates=(),
+            override=False,
+            min_confidence=0.55,
+            max_rewrite_terms=12,
+        )
+
+        self.assertEqual(grounded.query_rewrites, ("polished shoes", "outdoor wedding shoes"))
+        self.assertEqual(grounded.subjective_needs, ("comfortable",))
+        self.assertEqual(grounded.slot_updates, ())
+
 
 if __name__ == "__main__":
     unittest.main()

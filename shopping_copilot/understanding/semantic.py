@@ -59,7 +59,7 @@ SEMANTIC_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "attribute": {"type": "string", "enum": sorted(ALLOWED_ATTRIBUTES)},
+                    "attribute": {"type": "string", "enum": ["feature", "style", "use_case"]},
                     "value": {"type": "string", "maxLength": 120},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "evidence": {"type": "string", "maxLength": 160},
@@ -80,13 +80,14 @@ Return exactly one JSON object with no markdown or surrounding commentary:
 "slot_hypotheses": [{"attribute": string, "value": string,
 "confidence": number from 0 to 1, "evidence": exact customer quote}]}
 All three arrays are required and may be empty. Return at most 2 rewrites, 3
-needs, and 4 hypotheses. Attribute must be one of:
-category, material, color, size, style, brand, budget, feature, use_case, other.
+needs, and 4 hypotheses. Hypothesis attribute must be feature, style, or
+use_case. Do not infer category, material, color, size, brand, or budget; those
+require explicit deterministic evidence.
 Never generate product IDs.
 Keep rewrites short and catalog-searchable. Preserve the customer's meaning,
 negation, alternatives, and uncertainty. Do not invent brands, materials,
-budgets, sizes, or preferences. Slot hypotheses are soft proposals supported by
-an exact evidence span; deterministic rules and catalog grounding remain final.
+budgets, sizes, or preferences. Use the shortest exact customer quote as each
+hypothesis evidence span. Deterministic rules and catalog grounding remain final.
 """
 
 
@@ -317,7 +318,7 @@ def configured_responses_parser_from_environment(config: MVPConfig) -> Responses
             api_key=api_key,
             base_url=base_url,
             model=model,
-            timeout_seconds=config.semantic_timeout_seconds,
+            timeout_seconds=_environment_timeout(config.semantic_timeout_seconds),
             max_input_chars=config.semantic_max_input_chars,
             max_output_tokens=config.semantic_max_output_tokens,
         )
@@ -359,6 +360,16 @@ def _environment_max_calls(default: int) -> int:
         return min(10_000, max(0, int(raw)))
     except ValueError:
         return max(0, int(default))
+
+
+def _environment_timeout(default: float) -> float:
+    raw = os.environ.get("SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return min(30.0, max(0.1, float(default)))
+    try:
+        return min(30.0, max(0.1, float(raw)))
+    except ValueError:
+        return min(30.0, max(0.1, float(default)))
 
 
 def _validated_strings(value: object, *, limit: int, max_length: int) -> tuple[str, ...]:

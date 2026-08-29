@@ -6,6 +6,7 @@ import json
 
 from shopping_copilot.config import MVPConfig
 from shopping_copilot.contracts import SemanticParserError
+from shopping_copilot.understanding.semantic_grounding import ground_semantic_interpretation
 from shopping_copilot.understanding.semantic import configured_responses_parser_from_environment
 
 
@@ -15,13 +16,22 @@ def main() -> int:
         print("SoCLaaS parser is disabled or its URL, key, or model is missing.")
         return 2
     try:
-        result = provider.interpret(
-            "I need comfortable, polished shoes for a humid outdoor wedding.",
-            "category=shoes",
-        )
+        message = "I need comfortable, polished shoes for a humid outdoor wedding."
+        context = "category=shoes"
+        result = provider.interpret(message, context)
     except SemanticParserError as error:
         print(f"SoCLaaS request failed safely: {error}")
         return 1
+    config = MVPConfig()
+    grounded = ground_semantic_interpretation(
+        result,
+        raw_message=message,
+        context=context,
+        deterministic_updates=(),
+        override=False,
+        min_confidence=config.semantic_min_confidence,
+        max_rewrite_terms=config.semantic_max_rewrite_terms,
+    )
     print(
         json.dumps(
             {
@@ -40,6 +50,17 @@ def main() -> int:
                 "usage": {
                     "prompt_tokens": result.prompt_tokens,
                     "completion_tokens": result.completion_tokens,
+                },
+                "accepted_for_retrieval": {
+                    "query_rewrites": grounded.query_rewrites,
+                    "slot_updates": [
+                        {
+                            "attribute": item.attribute.value,
+                            "value": item.value,
+                            "source": item.source,
+                        }
+                        for item in grounded.slot_updates
+                    ],
                 },
             },
             indent=2,

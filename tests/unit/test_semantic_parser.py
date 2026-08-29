@@ -219,6 +219,7 @@ class SemanticParserTest(unittest.TestCase):
                     "SHOPPING_COPILOT_LLM_ENABLED": "1",
                     "SHOPPING_COPILOT_LLM_MAX_CALLS": "3",
                     "SHOPPING_COPILOT_LLM_MODEL": "llama3.1:8b",
+                    "SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS": "7.5",
                     "SOCLAAS_BASE_URL": "https://gateway.example/v1",
                     "SOCLAAS_API_KEY": "secret",
                 },
@@ -228,6 +229,7 @@ class SemanticParserTest(unittest.TestCase):
 
         self.assertIsInstance(parser, GatedSemanticParser)
         self.assertEqual(parser.provider.responses_url, "https://gateway.example/v1/responses")
+        self.assertEqual(parser.provider.timeout_seconds, 7.5)
         self.assertEqual(parser.max_calls, 3)
 
     def test_remote_plain_http_endpoint_is_rejected(self) -> None:

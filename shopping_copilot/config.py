@@ -20,7 +20,8 @@ class MVPConfig:
     max_query_terms: int = 40
     max_focused_terms: int = 12
     max_recommendations: int = 10
-    semantic_timeout_seconds: float = 4.0
+    # Provisional from a live gateway probe; retune from a larger latency sample.
+    semantic_timeout_seconds: float = 6.0
     semantic_max_input_chars: int = 4_000
     semantic_max_output_tokens: int = 320
     semantic_max_calls_per_run: int = 64
