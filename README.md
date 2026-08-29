@@ -7,6 +7,8 @@ Project documentation:
 - Quick pipeline and technology summary: [`docs/pipeline-summary.md`](docs/pipeline-summary.md)
 - Full architecture, module boundaries, and five-person workstream map: [`docs/architecture.md`](docs/architecture.md)
 - MVP boundaries and canonical commands: [`docs/mvp.md`](docs/mvp.md)
+- Measured MVP behavior: [`docs/findings.md`](docs/findings.md)
+- Prioritized follow-up work and alternatives: [`docs/todo.md`](docs/todo.md)
 
 ## What You Receive
 
