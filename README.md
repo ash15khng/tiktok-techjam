@@ -11,6 +11,7 @@ Project documentation:
 - Prioritized follow-up work and alternatives: [`docs/todo.md`](docs/todo.md)
 - Optional semantic parser setup and expectations: [`docs/llm-integration.md`](docs/llm-integration.md)
 - Expected real-user conversation behavior: [`docs/interaction-examples.md`](docs/interaction-examples.md)
+- Final implementation report and submission considerations: [`docs/final-report.md`](docs/final-report.md)
 
 ## What You Receive
 

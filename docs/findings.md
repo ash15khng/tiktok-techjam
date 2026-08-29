@@ -39,7 +39,7 @@ latency yet.
 - Active State let later answers refine retrieval without concatenating stale chat.
 - Asking and recommending together preserved an immediate hit opportunity.
 - `feature` was a strong first specific question; `other` remained a broad fallback.
-- Four cheap lexical views improved recall without external infrastructure.
+- Five cheap lexical rank lists improved recall without external infrastructure.
 - Selective override removal retained later confirmed evidence.
 - `rating_number` was useful as a capped tie-break: public targets have median
   rating count 6,846 while the full catalog median is 12.
@@ -94,6 +94,7 @@ A local 40-request audit measured:
 - mean response: 211 ms;
 - p95 response: 261 ms;
 - maximum response: 279 ms.
+- steady process working set after one response: 274 MiB.
 
 The p95 meets the initial 500 ms reliable-path budget in this local broad-query
 audit. This is not an end-to-end judging-machine guarantee; candidate depth and

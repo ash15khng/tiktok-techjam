@@ -13,9 +13,12 @@
 6. Add configuration hashes and optional per-turn traces without hidden labels.
 7. Evaluate the implemented schema-validated semantic parser with a real key,
    recording parse quality, timeout rate, tokens, latency, cost, and score delta.
-8. Test paraphrases not copied from the simulator and grow the interpreter corpus.
-9. Record memory usage and rerun latency on the judging environment.
-10. Finish release instructions, limitations, team contributions, and demo script.
+8. Grow the current real-user examples into at least 100 parser utterances with
+   operation and slot expectations.
+9. Rerun latency and memory on the judging environment; local measurements are
+   261 ms p95 and about 274 MiB steady working set.
+10. Add the five members' contribution statements and rehearse the prepared
+    multi-turn demo before submission.
 
 ## Other possible implementations
 
