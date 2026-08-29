@@ -426,6 +426,14 @@ Operation detection precedes value extraction. In `Actually, not black—make it
 
 ### 7.2 Deterministic rule engine
 
+The current MVP safely separates comma/semicolon-delimited inline constraints,
+removes discourse markers such as `preferably` and `make it ... instead`, and
+keeps catalog-shaped payloads intact even when a feature contains commas.
+Direct customer language such as `no leather` becomes an exclusion; catalog
+features such as `No Closure closure` remain positive searchable evidence.
+This provenance distinction prevents a lexical negation from reversing the
+meaning of frozen product metadata.
+
 `understanding/rules.py` uses compiled regular expressions and finite-state handling for:
 
 | Language | Parsed operation |
@@ -788,6 +796,7 @@ final_score =
   + 0.12 * exact_phrase_ratio
   + profile_prior
   + 0.18 * popularity
+  + 0.12 * budget_signal
   - 0.70 * explicit_exclusion_match
 ```
 
@@ -796,6 +805,13 @@ Missing fields add neither support nor contradiction. These weights and the
 800-item depth are retained public-set engineering values, not learned
 probabilities; target-disjoint tuning remains required. Final ties use RRF and
 then `parent_asin` ascending.
+
+`budget_signal` is `+1` for a catalog price inside an explicitly parsed range,
+`-1` outside a hard upper/lower/range bound, and `0` when either the budget or
+product price is missing. `around` uses a provisional `max($10, 25%)` tolerance
+and a softer `-0.5` outside it. The signal did not change the public score
+because budget answers arrived after existing hits, so its weight still needs a
+dedicated real-user and target-disjoint ablation.
 
 ### 12.4 Optional cross-encoder
 

@@ -23,6 +23,11 @@ Missing metadata is not treated as a contradiction. Explicit session evidence
 overrides the anonymized profile. Corrections remove stale evidence before the
 next retrieval.
 
+For ordinary user wording, the deterministic parser separates inline budgets,
+preferences, and exclusions (for example, `shoes under $60, preferably red, no
+leather`). Numeric price scoring is three-valued: matching, violating, or
+unknown when catalog price is missing.
+
 ## Runtime boundaries
 
 - `starter/agent.py` exposes the official interface.

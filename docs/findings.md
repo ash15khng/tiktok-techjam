@@ -16,6 +16,7 @@ read public labels, evaluator helpers, hidden intent cards, or ground truth.
 | Rerank depth 320 | 0.985 | 0.626 | 2.365 | 0.853 |
 | Broad recovery after unanswered field | 0.985 | 0.641 | 2.300 | 0.859 |
 | Broad recovery + full-union rerank | 0.995 | 0.635 | 2.245 | 0.863 |
+| Compound user parsing + price signal | 0.995 | 0.635 | 2.245 | 0.863 |
 
 Final scenario results:
 
@@ -55,6 +56,10 @@ latency yet.
 - Reranking the complete bounded candidate union recovered constraint-matching
   products below the former rank-160 cutoff, bringing Boundary and Override to
   1.000 Hit Rate on the small public slices.
+- Provenance-aware negation preserved catalog phrases such as `No Closure`
+  while supporting direct user exclusions such as `no leather`.
+- Compound user parsing and missing-neutral numeric price scoring passed an
+  end-to-end synthetic interaction without changing the public metrics.
 
 ## What did not work
 
@@ -72,6 +77,9 @@ latency yet.
 - One public Buying session still misses. Its low-volume novelty T-shirt remains
   below rank 160 before extra constraints and below rank 350 afterward; forcing
   it upward would require a general long-tail coverage method, not target tuning.
+- Treating every `no ...` catalog phrase as an exclusion reduced TechnicalScore
+  to 0.8588. The fix was to distinguish catalog-shaped payload evidence from
+  direct customer clauses rather than weakening exclusions globally.
 - Treating Recommendation Exposure as permanent caused a severe Override
   regression because the evaluator may reveal the corrected intent after a
   target appeared under the old intent.

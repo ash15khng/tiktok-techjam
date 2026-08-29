@@ -36,6 +36,21 @@ class MessageInterpreterTest(unittest.TestCase):
 
         self.assertEqual(frame.no_preference_attribute, Attribute.COLOR)
 
+    def test_real_user_compound_request_separates_category_budget_and_exclusion(self) -> None:
+        frame = self.parse("I'm looking for running shoes under $100, preferably blue, no leather.")
+
+        self.assertEqual(frame.category_phrases, ("running shoes",))
+        self.assertIn("under $100", frame.preference_phrases)
+        self.assertIn("blue", frame.preference_phrases)
+        self.assertEqual(frame.exclusions, ("leather",))
+        self.assertIn(Attribute.BUDGET, {update.attribute for update in frame.slot_updates})
+
+    def test_compact_correction_removes_discourse_boilerplate(self) -> None:
+        frame = self.parse("Actually, make it waterproof instead.")
+
+        self.assertTrue(frame.override)
+        self.assertEqual(frame.preference_phrases, ("waterproof",))
+
 
 if __name__ == "__main__":
     unittest.main()

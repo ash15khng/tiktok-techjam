@@ -34,9 +34,11 @@ It returns strict structured data:
 - up to five subjective needs;
 - up to eight soft attribute hypotheses with supporting evidence.
 
-The deterministic parser remains authoritative for budgets, sizes, negation,
-alternatives, corrections, and `ANY`. Model hypotheses cannot create ASINs and
-their confidence is capped at 0.70 before any future catalog grounding.
+The deterministic parser remains authoritative for supported budgets,
+high-confidence exclusions, corrections, and `ANY`. Model hypotheses cannot
+create ASINs and their confidence is capped at 0.70 before any future catalog
+grounding. Complex alternatives and implicit size language still need corpus
+coverage before the model path can be considered reliable.
 
 Simple replies and evaluator-shaped constraint messages skip the API. Timeouts,
 HTTP errors, incomplete responses, invalid JSON, or invalid fields become an

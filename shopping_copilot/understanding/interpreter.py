@@ -10,7 +10,8 @@ from shopping_copilot.understanding.models import Attribute, IntentFrame, SlotUp
 
 
 CATEGORY_RE = re.compile(
-    r"\b(?:looking\s+for|searching\s+for|want|need)\s+(.+?)(?=\s*,\s*(?:but|and)\b|[.!?]|$)",
+    r"\b(?:looking\s+for|searching\s+for|want|need)\s+(.+?)"
+    r"(?=\s*(?:,|[.!?]|$|\b(?:under|below|over|above|between|with|without|preferably|ideally)\b))",
     re.IGNORECASE,
 )
 PAYLOAD_RE = re.compile(
@@ -51,6 +52,32 @@ def _clean_phrase(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip(" -;,.:\t\r\n")
 
 
+def _clean_customer_clause(value: str) -> str:
+    cleaned = _clean_phrase(value)
+    if cleaned.casefold() in {"actually", "please"}:
+        return ""
+    cleaned = re.sub(r"^(?:but|and)\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"^(?:actually\s+)?(?:please\s+)?(?:i(?:'d|\s+would)?\s+prefer|i\s+prefer|"
+        r"preferably|ideally|make\s+it|with)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s+instead$", "", cleaned, flags=re.IGNORECASE)
+    return _clean_phrase(cleaned)
+
+
+def _split_customer_tail(value: str) -> tuple[str, ...]:
+    """Split high-confidence user separators without fragmenting catalog payloads."""
+
+    return tuple(
+        clause
+        for clause in (_clean_customer_clause(part) for part in re.split(r"\s*[,;]\s*", value))
+        if clause
+    )
+
+
 class MessageInterpreter:
     def __init__(self, semantic_parser: SemanticParser | None = None) -> None:
         self.semantic_parser = semantic_parser or DisabledSemanticParser()
@@ -83,6 +110,7 @@ class MessageInterpreter:
                 categories.append(category)
 
         preferences: list[str] = []
+        catalog_style_tail = False
         payload_match = PAYLOAD_RE.search(raw)
         if payload_match:
             preferences.extend(
@@ -91,7 +119,8 @@ class MessageInterpreter:
                 if phrase
             )
         elif category_match:
-            tail = _clean_phrase(raw[category_match.end():])
+            raw_tail = raw[category_match.end():]
+            tail = _clean_phrase(raw_tail)
             tail = re.sub(
                 r"^(?:but\s+)?(?:i['’]?m|i\s+am)\s+still\s+exploring\.?$",
                 "",
@@ -99,16 +128,30 @@ class MessageInterpreter:
                 flags=re.IGNORECASE,
             )
             if tail and not no_preference:
-                preferences.append(tail)
+                # Evaluator/catalog-derived opening evidence follows a period
+                # and may contain meaningful commas inside one product feature.
+                # User-authored inline constraints are split conservatively.
+                catalog_style_tail = raw_tail.lstrip().startswith(".")
+                if catalog_style_tail:
+                    preferences.append(tail)
+                else:
+                    preferences.extend(_split_customer_tail(tail))
         elif not no_preference and not re.search(r"ask\s+me\s+about\s+one\s+specific\s+attribute", lowered):
-            cleaned = _clean_phrase(raw)
-            if cleaned:
-                preferences.append(cleaned)
+            preferences.extend(_split_customer_tail(raw))
 
         exclusions: list[str] = []
         retained_preferences: list[str] = []
         for phrase in preferences:
-            negative = re.match(r"(?:not|without|avoid|anything\s+but)\s+(.+)", phrase, re.IGNORECASE)
+            negative_prefix = (
+                r"(?:not|without|avoid|anything\s+but)\s+(.+)"
+                if payload_match or catalog_style_tail
+                else r"(?:not|no|without|avoid|anything\s+but|i\s+don['’]?t\s+want)\s+(.+)"
+            )
+            negative = re.match(
+                negative_prefix,
+                phrase,
+                re.IGNORECASE,
+            )
             if negative:
                 exclusions.append(_clean_phrase(negative.group(1)))
             else:

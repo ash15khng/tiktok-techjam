@@ -115,6 +115,19 @@ class AgentIntegrationTest(unittest.TestCase):
         second_ids = {item["parent_asin"] for item in second["recommendations"]}
         self.assertFalse(first_ids & second_ids)
 
+    def test_real_user_budget_and_exclusion_affect_the_end_to_end_list(self) -> None:
+        response = self.agent.respond(
+            "session",
+            "I'm looking for shoes under $60, preferably red, no leather.",
+            1,
+            10,
+        )
+
+        self.assertEqual(response["recommendations"][0]["parent_asin"], "A")
+        active = self.agent._agent.sessions.get("session").active
+        self.assertEqual(active.slot_values["budget"], ["under $60"])
+        self.assertIn("leather", active.exclusions)
+
 
 if __name__ == "__main__":
     unittest.main()

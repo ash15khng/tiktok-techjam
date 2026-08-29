@@ -43,7 +43,7 @@ respond(message)
 | Route control | Heuristic `focus_score`; all cheap generators still run |
 | Retrieval confidence | Pairwise generator Top-20 Jaccard converted to Top-10 stability |
 | Fusion | Weighted Reciprocal Rank Fusion, `k=60` |
-| Reranking | Full bounded union: normalized RRF + IDF coverage + phrase match + capped popularity |
+| Reranking | Full bounded union: RRF + IDF/phrase coverage + capped popularity + missing-neutral price range |
 | Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
 | Question selection | Top-50 coverage/Gini partition value plus one broad unanswered-question recovery |
 | Optional semantics | OpenAI Responses schema adapter, gated and disabled without explicit environment opt-in |

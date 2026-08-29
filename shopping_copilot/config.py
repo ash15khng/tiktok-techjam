@@ -26,6 +26,7 @@ class MVPConfig:
     profile_score_cap: float = 0.03
     popularity_weight: float = 0.18
     popularity_count_cap: int = 20_000
+    budget_signal_weight: float = 0.12
     question_value_threshold: float = 0.08
 
     # Initial guesses: retain only after scenario-level tuning and ablation.
