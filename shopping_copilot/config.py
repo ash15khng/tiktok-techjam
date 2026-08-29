@@ -14,6 +14,7 @@ class MVPConfig:
     """
 
     candidate_depth: int = 160
+    category_pool_depth: int = 800
     rerank_depth: int = 160
     rrf_k: int = 60
     max_query_terms: int = 40
@@ -33,10 +34,12 @@ class MVPConfig:
         ("field", 1.00),
         ("title", 0.55),
         ("category", 0.45),
+        ("category_popular", 0.35),
     )
     exploratory_route_weights: tuple[tuple[str, float], ...] = (
         ("constraint", 0.85),
         ("field", 1.00),
         ("title", 0.95),
         ("category", 1.05),
+        ("category_popular", 0.95),
     )

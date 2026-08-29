@@ -22,7 +22,7 @@ respond(message)
     -> IntentFrame of typed SlotUpdates and preserved raw phrases
     -> StateReducer creates current ActiveState
     -> NeedAssessor calculates specificity and focus_score
-    -> title BM25 + field BM25 + attribute retrieval
+    -> title/field BM25 + category relevance/popularity + constraint retrieval
     -> RetrievalAssessor measures agreement, entropy, NQC, coverage, and stability
     -> weighted Reciprocal Rank Fusion
     -> constraint match / contradiction / unknown evaluation
@@ -42,6 +42,7 @@ respond(message)
 | Attribute grounding | Catalog-derived longest-match token trie |
 | Fuzzy linking | Token Jaccard + `difflib.SequenceMatcher` + category compatibility |
 | Lexical retrieval | SQLite FTS5 BM25 with field weights |
+| Broad-category coverage | Shared 800-item category pool, ranked separately by BM25 and rating count |
 | Structured retrieval | Category/attribute posting-list set operations |
 | Route control | Heuristic `focus_score`; all cheap generators still run |
 | Retrieval confidence | Generator Jaccard, category entropy, NQC, margin, weight-perturbation stability |

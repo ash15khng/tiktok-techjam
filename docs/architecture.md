@@ -601,7 +601,10 @@ Decision stage is descriptive and does not choose a route by itself:
 
 ## 10. Candidate generation
 
-Every non-empty request runs all three cheap generators. No cheap route is disabled by `focus_score`.
+Every non-empty request runs five cheap lexical rank lists: field, title,
+category relevance, category-conditioned popularity, and focused constraint
+retrieval. No cheap route is disabled by `focus_score`; the score only changes
+their fusion weights.
 
 ### 10.1 Query construction
 
@@ -646,7 +649,23 @@ attribute_score =
 
 Unknown product fields contribute zero. The generator returns the highest 150 products with deterministic ASIN tie-breaking.
 
-### 10.5 Optional dense generator
+### 10.5 Category-conditioned popularity generator
+
+Broad category queries often give hundreds of products identical BM25 category
+evidence. ASIN tie-breaking can then exclude a plausible, well-established item
+before reranking. The reliable MVP therefore retrieves an `AND` category pool
+of up to 800 products and exposes two rank lists from the same pool:
+
+- `category`: original BM25 order for relevance;
+- `category_popular`: descending `rating_number`, then BM25 and ASIN.
+
+If the `AND` expression is empty, the pool falls back to `OR`. Popularity is a
+separate target-blind candidate source, not a catalog edit or inferred purchase
+history. Its RRF weight is lower when the active need is focused so explicit
+constraints can dominate. The depth of 800 and route weights are provisional
+engineering values requiring target-disjoint tuning.
+
+### 10.6 Optional dense generator
 
 Catalog embedding text is:
 
@@ -988,6 +1007,7 @@ Tracing is optional and never required by the Agent.
 | grounding | longest alias, ambiguity margin, category restriction, fuzzy rejection |
 | reducer | add, exclude, replace, category override, profile suppression |
 | FTS queries | escaping, empty query, deterministic rank, term limit |
+| category popularity | shared category pool, popularity ordering, stable tie-break |
 | attribute generator | match, contradiction, unknown, stable tie-break |
 | RRF | missing generator, weights, deterministic fusion |
 | retrieval assessment | agreement, entropy, NQC, margin, perturbation stability |

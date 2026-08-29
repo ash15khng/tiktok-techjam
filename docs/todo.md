@@ -2,17 +2,20 @@
 
 ## Prioritized work
 
-1. Audit the remaining Override and Boundary misses turn by turn.
-2. Measure target recall at candidate depths 10, 50, 100, and 160 per route.
-3. Tune route weights, rerank weights, popularity cap, question threshold, and
+1. Audit the three remaining public misses and measure why their targets never
+   enter, or remain below, the reranked candidate depth.
+2. Measure target recall at candidate depths 10, 50, 100, 160, and 800 per route.
+3. Recover the MRR lost by the category-popularity route without regressing its
+   Hit Rate and MTTC gains.
+4. Tune route weights, rerank weights, popularity cap, question threshold, and
    candidate depth with target-ASIN-disjoint folds.
-4. Add explicit tri-state constraint evidence: match, contradiction, or unknown.
-5. Add configuration hashes and optional per-turn traces without hidden labels.
-6. Evaluate the implemented schema-validated semantic parser with a real key,
+5. Add explicit tri-state constraint evidence: match, contradiction, or unknown.
+6. Add configuration hashes and optional per-turn traces without hidden labels.
+7. Evaluate the implemented schema-validated semantic parser with a real key,
    recording parse quality, timeout rate, tokens, latency, cost, and score delta.
-7. Test paraphrases not copied from the simulator and grow the interpreter corpus.
-8. Record memory usage and rerun latency on the judging environment.
-9. Finish release instructions, limitations, team contributions, and demo script.
+8. Test paraphrases not copied from the simulator and grow the interpreter corpus.
+9. Record memory usage and rerun latency on the judging environment.
+10. Finish release instructions, limitations, team contributions, and demo script.
 
 ## Other possible implementations
 

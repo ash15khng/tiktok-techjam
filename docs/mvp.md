@@ -11,7 +11,7 @@ requiring a network, GPU, or model API. Semantic models remain optional.
 message + Active State
     -> deterministic interpretation and override handling
     -> focused/exploratory route weighting
-    -> field, title, category, and constraint FTS retrieval
+    -> field, title, category, category-popularity, and constraint FTS retrieval
     -> weighted Reciprocal Rank Fusion
     -> evidence, profile, and capped-popularity reranking
     -> unseen-first ordering, reset when intent changes
@@ -51,13 +51,15 @@ The unmodified official evaluator currently reports:
 
 | Metric | Baseline | MVP |
 |---|---:|---:|
-| Hit Rate@10 | 0.125 | 0.960 |
-| MRR | 0.068 | 0.648 |
-| MTTC | 9.81 | 2.895 |
-| TechnicalScore | 0.107 | 0.837 |
+| Hit Rate@10 | 0.125 | 0.985 |
+| MRR | 0.068 | 0.629 |
+| MTTC | 9.81 | 2.385 |
+| TechnicalScore | 0.107 | 0.854 |
 
 These are development-set measurements, not private-set estimates. A 40-request
-local audit measured 2.37 s startup and 470 ms p95 response latency.
+local broad-query audit measured 2.12 s startup and 259 ms p95 response latency.
+The category-popularity route improved recall and first-hit turn while reducing
+MRR, so first-list ordering remains a tuning target.
 
 ## Semantic model status
 

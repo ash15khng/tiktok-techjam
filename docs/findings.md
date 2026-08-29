@@ -12,15 +12,16 @@ read public labels, evaluator helpers, hidden intent cards, or ground truth.
 | Selective override + capped popularity | 0.920 | 0.628 | 3.26 | 0.803 |
 | Unseen-first, without override reset | 0.835 | 0.538 | 3.76 | 0.724 |
 | Unseen-first, reset on override | 0.960 | 0.648 | 2.895 | 0.837 |
+| Category-conditioned popularity route | 0.985 | 0.629 | 2.385 | 0.854 |
 
 Final scenario results:
 
 | Scenario | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|
-| Buying | 0.975 | 0.614 | 2.19 |
-| Browsing | 0.988 | 0.656 | 2.51 |
-| Intent Override | 0.900 | 0.760 | 4.83 |
-| Boundary | 0.800 | 0.531 | 5.80 |
+| Buying | 0.988 | 0.633 | 1.81 |
+| Browsing | 1.000 | 0.596 | 2.03 |
+| Intent Override | 0.967 | 0.738 | 4.20 |
+| Boundary | 0.900 | 0.542 | 4.40 |
 
 Token usage is zero because the semantic provider is disabled.
 
@@ -43,6 +44,9 @@ latency yet.
   coverage without changing candidate scores.
 - Resetting exposure on Intent Override restored products rejected under the old
   need and raised Override Hit Rate from 0.067 to 0.900.
+- Ranking a deeper category pool separately by rating count recovered broad-query
+  targets that category BM25 lost in large tie groups. It increased Hit Rate to
+  0.985 and reduced MTTC to 2.385 without a model or private information.
 
 ## What did not work
 
@@ -52,7 +56,11 @@ latency yet.
 - Pure relevance fusion left some metadata-identical targets below rank 10.
 - Brand often looked discriminative in the candidate pool but was poorly
   answerable, so candidate partitioning needed an answerability prior.
-- The current system still misses 10% of Override and 20% of Boundary sessions.
+- Category popularity traded some first-list precision for coverage: MRR fell
+  from 0.648 to 0.629 even while the total TechnicalScore improved.
+- Three public sessions still miss: one long-tail Buying target and one target
+  each in Override and Boundary whose generic category/feature evidence does not
+  enter the current candidate union.
 - Treating Recommendation Exposure as permanent caused a severe Override
   regression because the evaluator may reveal the corrected intent after a
   target appeared under the old intent.
@@ -63,13 +71,14 @@ latency yet.
 
 A local 40-request audit measured:
 
-- catalog startup: 2.37 seconds;
-- mean response: 382 ms;
-- p95 response: 470 ms;
-- maximum response: 479 ms.
+- catalog startup: 2.12 seconds;
+- mean response: 212 ms;
+- p95 response: 259 ms;
+- maximum response: 272 ms.
 
-The p95 meets the initial 500 ms budget but has little headroom. Candidate depth
-and rerank depth should be tuned jointly with recall rather than reduced blindly.
+The p95 meets the initial 500 ms reliable-path budget in this local broad-query
+audit. This is not an end-to-end judging-machine guarantee; candidate depth and
+rerank depth still need joint recall/latency tuning.
 
 ## Caveats
 

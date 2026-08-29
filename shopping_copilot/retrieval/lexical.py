@@ -37,9 +37,30 @@ class LexicalRetriever:
                 weights=CONSTRAINT_WEIGHTS,
                 limit=plan.generator_limit,
             )
+        category_pool = self.store.search(
+            category_terms,
+            weights=CATEGORY_WEIGHTS,
+            limit=max(plan.generator_limit, self.config.category_pool_depth),
+            require_all=True,
+        )
+        if not category_pool and category_terms:
+            category_pool = self.store.search(
+                category_terms,
+                weights=CATEGORY_WEIGHTS,
+                limit=max(plan.generator_limit, self.config.category_pool_depth),
+            )
+        category_popular = sorted(
+            category_pool,
+            key=lambda result: (
+                -self.store.get(result.parent_asin).rating_number,
+                result.raw_score,
+                result.parent_asin,
+            ),
+        )[: plan.generator_limit]
         return {
             "field": self.store.search(query_terms, weights=FIELD_WEIGHTS, limit=plan.generator_limit),
             "title": self.store.search(category_terms or query_terms, weights=TITLE_WEIGHTS, limit=plan.generator_limit),
-            "category": self.store.search(category_terms, weights=CATEGORY_WEIGHTS, limit=plan.generator_limit),
+            "category": category_pool[: plan.generator_limit],
+            "category_popular": category_popular,
             "constraint": constraint,
         }
