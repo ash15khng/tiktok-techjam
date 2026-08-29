@@ -52,6 +52,7 @@ SEMANTIC_SCHEMA = {
         "query_rewrites": {
             "type": "array",
             "items": {"type": "string", "maxLength": 160},
+            "minItems": 1,
             "maxItems": 2,
         },
         "subjective_needs": {
@@ -79,20 +80,23 @@ SEMANTIC_SCHEMA = {
     "additionalProperties": False,
 }
 
-INSTRUCTIONS = """You interpret customer language for catalog search.
-Return exactly one JSON object with no markdown or surrounding commentary:
-{"query_rewrites": [string], "subjective_needs": [string],
-"slot_hypotheses": [{"attribute": string, "value": string,
-"confidence": number from 0 to 1, "evidence": exact customer quote}]}
-All three arrays are required and may be empty. Return at most 2 rewrites, 3
-needs, and 4 hypotheses. Hypothesis attribute must be feature, style, or
-use_case. Do not infer category, material, color, size, brand, or budget; those
-require explicit deterministic evidence.
-Never generate product IDs.
-Keep rewrites short and catalog-searchable. Preserve the customer's meaning,
-negation, alternatives, and uncertainty. Do not invent brands, materials,
-budgets, sizes, or preferences. Use the shortest exact customer quote as each
-hypothesis evidence span. Deterministic rules and catalog grounding remain final.
+SEMANTIC_TOOL_NAME = "submit_catalog_search_interpretation"
+
+INSTRUCTIONS = """Translate difficult customer shopping language into catalog search terms.
+Call submit_catalog_search_interpretation exactly once. Produce 1 or 2 short
+query rewrites, at most 3 needs, and at most 4 hypotheses.
+
+A rewrite may translate an implied benefit or metaphor into common product
+features and may include a strongly entailed generic product noun. Examples:
+- "cheap metal makes my ears itch" -> "hypoallergenic nickel free earrings"
+- "wet and windy commute, not a heavy coat" -> "lightweight water resistant windbreaker"
+- "fluffy at home, open toes, pillow padding" -> "fuzzy open toe memory foam house slippers"
+
+Do not invent a brand, material, color, size, budget, product ID, or unsupported
+preference. Preserve negation and corrections. Structured hypotheses may only
+use feature, style, or use_case, with confidence from 0 to 1 and the shortest
+exact customer evidence quote. Category, material, color, size, brand, and
+budget are never structured hypotheses. Local deterministic grounding is final.
 """
 
 
@@ -159,6 +163,16 @@ class ResponsesSemanticParser:
             "stream": False,
             "max_output_tokens": self.max_output_tokens,
             "temperature": 0.0,
+            "tools": [
+                {
+                    "type": "function",
+                    "name": SEMANTIC_TOOL_NAME,
+                    "description": "Return grounded catalog-search rewrites and optional soft shopping hypotheses.",
+                    "parameters": SEMANTIC_SCHEMA,
+                    "strict": True,
+                }
+            ],
+            "tool_choice": {"type": "function", "name": SEMANTIC_TOOL_NAME},
         }
         request = urllib.request.Request(
             self.responses_url,
@@ -176,22 +190,39 @@ class ResponsesSemanticParser:
     def _parse_response(response: dict) -> SemanticInterpretation:
         if response.get("status") != "completed":
             raise SemanticParserError("semantic response did not complete")
-        output_text: str | None = None
+        value: object | None = None
         for item in response.get("output", []):
-            if not isinstance(item, dict) or item.get("type") != "message":
+            if not isinstance(item, dict) or item.get("type") != "function_call":
                 continue
-            for content in item.get("content", []):
-                if isinstance(content, dict) and content.get("type") == "output_text":
-                    output_text = content.get("text")
+            if item.get("name") != SEMANTIC_TOOL_NAME:
+                continue
+            arguments = item.get("arguments")
+            if isinstance(arguments, dict):
+                value = arguments
+            elif isinstance(arguments, str):
+                try:
+                    value = json.loads(arguments)
+                except json.JSONDecodeError:
+                    raise SemanticParserError("semantic function arguments were not valid JSON") from None
+            break
+
+        output_text: str | None = None
+        if value is None:
+            for item in response.get("output", []):
+                if not isinstance(item, dict) or item.get("type") != "message":
+                    continue
+                for content in item.get("content", []):
+                    if isinstance(content, dict) and content.get("type") == "output_text":
+                        output_text = content.get("text")
+                        break
+                if output_text is not None:
                     break
-            if output_text is not None:
-                break
-        if not isinstance(output_text, str):
-            raise SemanticParserError("semantic response contained no output text")
-        try:
-            value = json.loads(_strip_json_fence(output_text))
-        except json.JSONDecodeError:
-            raise SemanticParserError("semantic response was not valid JSON") from None
+            if not isinstance(output_text, str):
+                raise SemanticParserError("semantic response contained no tool call or output text")
+            try:
+                value = json.loads(_strip_json_fence(output_text))
+            except json.JSONDecodeError:
+                raise SemanticParserError("semantic response was not valid JSON") from None
         if not isinstance(value, dict):
             raise SemanticParserError("semantic response root must be an object")
 

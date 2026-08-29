@@ -12,6 +12,7 @@ from shopping_copilot.contracts import DisabledSemanticParser, SemanticInterpret
 from shopping_copilot.understanding.semantic import (
     GatedSemanticParser,
     ResponsesSemanticParser,
+    SEMANTIC_TOOL_NAME,
     semantic_parser_from_environment,
     should_call_semantic_parser,
 )
@@ -28,6 +29,21 @@ def completed_response(payload: dict) -> dict:
             },
         ],
         "usage": {"input_tokens": 37, "output_tokens": 19},
+    }
+
+
+def completed_tool_response(payload: dict) -> dict:
+    return {
+        "status": "completed",
+        "output": [
+            {
+                "type": "function_call",
+                "name": SEMANTIC_TOOL_NAME,
+                "arguments": json.dumps(payload),
+                "status": "completed",
+            }
+        ],
+        "usage": {"input_tokens": 41, "output_tokens": 17},
     }
 
 
@@ -79,10 +95,23 @@ class SemanticParserTest(unittest.TestCase):
         self.assertEqual(observed["timeout"], 3.5)
         self.assertEqual(
             set(observed["body"]),
-            {"model", "instructions", "input", "stream", "max_output_tokens", "temperature"},
+            {
+                "model",
+                "instructions",
+                "input",
+                "stream",
+                "max_output_tokens",
+                "temperature",
+                "tools",
+                "tool_choice",
+            },
         )
         self.assertFalse(observed["body"]["stream"])
         self.assertEqual(observed["body"]["temperature"], 0.0)
+        self.assertIn("strongly entailed generic product noun", observed["body"]["instructions"])
+        self.assertEqual(observed["body"]["tool_choice"]["name"], SEMANTIC_TOOL_NAME)
+        self.assertTrue(observed["body"]["tools"][0]["strict"])
+        self.assertEqual(observed["body"]["tools"][0]["parameters"]["properties"]["query_rewrites"]["minItems"], 1)
         self.assertIsInstance(observed["body"]["input"], str)
         self.assertNotIn("test-secret", json.dumps(observed["body"]))
 
@@ -97,8 +126,31 @@ class SemanticParserTest(unittest.TestCase):
             transport=lambda request, timeout: {"status": "completed", "output": []},
         )
 
-        with self.assertRaisesRegex(SemanticParserError, "no output text"):
+        with self.assertRaisesRegex(SemanticParserError, "no tool call or output text"):
             parser.interpret("subjective request", "")
+
+    def test_function_call_arguments_are_preferred_and_validated(self) -> None:
+        parser = ResponsesSemanticParser(
+            api_key="secret",
+            base_url="https://gateway.example/v1",
+            model="model",
+            timeout_seconds=1,
+            max_input_chars=100,
+            max_output_tokens=100,
+            transport=lambda request, timeout: completed_tool_response(
+                {
+                    "query_rewrites": ["lightweight water resistant windbreaker"],
+                    "subjective_needs": ["easy to pack"],
+                    "slot_hypotheses": [],
+                }
+            ),
+        )
+
+        result = parser.interpret("wet and windy commute", "")
+
+        self.assertEqual(result.query_rewrites, ("lightweight water resistant windbreaker",))
+        self.assertEqual(result.prompt_tokens, 41)
+        self.assertEqual(result.completion_tokens, 17)
 
     def test_gate_skips_simple_reply_and_falls_back_on_failure(self) -> None:
         class FailingProvider:

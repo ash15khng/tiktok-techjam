@@ -23,7 +23,7 @@ class MVPConfig:
     # Provisional from a live gateway probe; retune from a larger latency sample.
     semantic_timeout_seconds: float = 6.0
     semantic_max_input_chars: int = 4_000
-    semantic_max_output_tokens: int = 320
+    semantic_max_output_tokens: int = 220
     semantic_max_calls_per_run: int = 64
     semantic_cache_size: int = 256
     semantic_min_confidence: float = 0.55
