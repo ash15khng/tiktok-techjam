@@ -24,11 +24,12 @@ Customer:
 
 > I need something for a humid outdoor wedding, but I'm not sure what style.
 
-The deterministic path retains the raw need for lexical search. When the
-optional semantic parser is explicitly enabled, it may propose short rewrites
-and soft needs, but it cannot return product IDs. If a specific clarification
-is declined, the agent asks once what other requirement matters most instead of
-walking through every catalog field.
+The deterministic path retains the raw need for lexical search. When explicitly
+enabled, the semantic parser may add anchored rewrites such as `outdoor wedding
+shoes` and grounded soft `feature`, `style`, or `use_case` values. It cannot
+return product IDs or override deterministic constraints. If a specific
+clarification is declined, the agent asks once what other requirement matters
+most instead of walking through every catalog field.
 
 ## Intent correction
 
@@ -75,5 +76,5 @@ may supply it.
 - `black or navy` is searchable but does not yet have a first-class OR group.
 - Relative language such as `cheaper than the last one` is not grounded because
   the API provides no product-selection event.
-- Semantic model quality, cost, and latency are unknown until a real key and
-  explicit model are evaluated.
+- One live semantic compatibility call is not enough to establish quality,
+  monetary cost, p95 latency, or end-to-end score impact.

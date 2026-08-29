@@ -30,18 +30,21 @@ sessions. One of 200 public targets remains unfound.
 3. A contextual reply resolver grounds short answers using explicit current
    evidence first and the immediately preceding Clarification second. Each slot
    update records explicit, contextual, or fallback provenance.
-4. Active State stores only currently valid session evidence; the anonymized
+4. An optional billed semantic path adds anchored query rewrites and grounded
+   soft feature/style/use-case hints. A call cap, cache, local validation, and
+   deterministic fallback bound its risk.
+5. Active State stores only currently valid session evidence; the anonymized
    profile is a capped soft prior.
-5. Five lexical rank lists cover field relevance, title relevance, focused
+6. Five lexical rank lists cover field relevance, title relevance, focused
    constraints, category relevance, and category-conditioned popularity.
-6. Weighted Reciprocal Rank Fusion creates a bounded union. The full union is
+7. Weighted Reciprocal Rank Fusion creates a bounded union. The full union is
    reranked by RRF support, IDF coverage, exact phrase coverage, capped rating
    volume, profile overlap, exclusions, and missing-neutral price bounds.
-7. Previously shown products move behind unseen alternatives after rejection.
+8. Previously shown products move behind unseen alternatives after rejection.
    Exposure resets on Intent Override.
-8. Clarification uses top-candidate coverage and diversity. After an unanswered
+9. Clarification uses top-candidate coverage and diversity. After an unanswered
    field, one broad recovery question lets the customer volunteer a priority.
-9. `ResponseGuard` removes invalid/duplicate IDs, caps the list at ten, and
+10. `ResponseGuard` removes invalid/duplicate IDs, caps the list at ten, and
    preserves valid output under component failure.
 
 ## Rule and scope review
@@ -64,7 +67,11 @@ The scored system uses no model API: reported tokens are zero and marginal API
 cost is $0. A locally validated SoCLaaS Responses-compatible adapter is
 implemented but disabled unless an enable flag, API key, HTTPS base URL, and
 explicit model are all supplied.
-Only mocked provider tests exist, so no LLM quality, cost, or latency claim is
+
+One live `llama3.1:8b` compatibility response succeeded in about 4.2 seconds and
+reported 343 input plus 158 output tokens. Two preceding attempts exposed one
+shape deviation and one 4-second timeout. Provider pricing was not supplied and
+no paid evaluator was run, so no LLM score, cost, reliability, or p95 claim is
 made.
 
 Local Windows measurements on a 40-request broad-query audit:
@@ -90,9 +97,9 @@ must be repeated on the organizer's machine.
   unless the customer explicitly changes it.
 - Short replies such as `Nike`, `7`, `80`, `blue/`, and bare `no` are grounded
   by the last Clarification without overriding explicit current evidence.
-- Subjective needs still rely mainly on lexical overlap. The optional semantic
-  adapter is the intended safe extension, but should be enabled only after a
-  real-key ablation.
+- Subjective needs can receive LLM rewrites, but only anchored rewrites and
+  grounded soft slots reach retrieval. Unsupported inferences are discarded and
+  the deterministic path remains complete.
 
 ## Findings and trade-offs
 
@@ -111,6 +118,10 @@ Three rejected experiments are important:
   generic syntax but did not resolve shopping-specific short-answer semantics;
   it was tested locally, documented, and removed.
 
+The first live LLM output also showed why grounding is necessary: it proposed
+plausible category, material, and color values that were not explicitly stated.
+Those slots were rejected while its two useful anchored rewrites were retained.
+
 The remaining public miss is a low-volume novelty item in a large tie group.
 Directly boosting it would overfit. A defensible next experiment is a
 target-blind long-tail/diversity generator evaluated with target-ASIN-disjoint
@@ -121,8 +132,8 @@ folds.
 1. Run the canonical unit tests and evaluator on the final judging machine.
 2. Verify the catalog SHA-256 and keep `data/catalog.jsonl` out of Git.
 3. Add all five team members' contribution statements.
-4. Decide whether the optional LLM is worth enabling only after measuring model
-   name, parse accuracy, timeouts, p95 latency, tokens, and cost.
+4. Run a small fixed real-language LLM corpus and obtain provider pricing before
+   deciding whether a paid official ablation is worthwhile.
 5. Freeze configuration after target-disjoint validation; do not tune to the one
    remaining public ASIN.
 6. Rehearse the two-turn demo described in [interaction-examples.md](interaction-examples.md).

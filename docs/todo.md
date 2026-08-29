@@ -11,9 +11,11 @@
    candidate depth with target-ASIN-disjoint folds.
 5. Add explicit tri-state constraint evidence: match, contradiction, or unknown.
 6. Add configuration hashes and optional per-turn traces without hidden labels.
-7. Evaluate the implemented JSON-validated semantic parser with a real key,
-   recording parse quality, timeout rate, tokens, latency, cost, and score delta.
-8. Grow the current 48-test suite into at least 100 parser utterances, especially
+7. Evaluate the grounded semantic parser on a small fixed real-language corpus,
+   then run a paid official ablation only if parse utility justifies its cost.
+   Record timeout rate, tokens, latency distribution, provider price, fallback
+   rate, and score delta.
+8. Grow the current 55-test suite into at least 100 parser utterances, especially
    conjunction scope, short sizes, brand aliases, typos, and contextual replies
    that explicitly switch attributes.
 9. Rerun latency and memory on the judging environment; local measurements are

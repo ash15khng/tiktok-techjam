@@ -30,9 +30,13 @@ Final scenario results:
 
 Token usage is zero because the semantic provider is disabled.
 
-The optional SoCLaaS Responses-compatible adapter is contract-tested with mocked HTTP
-responses only. It is not part of the reported score and has no measured cost or
-latency yet.
+The optional SoCLaaS Responses-compatible adapter is not part of the reported
+score. A no-network public replay found 13 eligible calls and 12 unique
+message/context pairs. Three live compatibility requests were attempted: one
+initial shape rejection, one 4-second timeout, and one success in about 4.2
+seconds using 343 input and 158 output tokens. Provider pricing was not supplied,
+so monetary cost is not claimed. This sample is too small for a latency or
+quality distribution.
 
 ## What worked
 
@@ -64,6 +68,11 @@ latency yet.
 - Immediate-question context correctly grounds brands, numeric sizes, bare
   budgets, categories, and declines while explicit current evidence retains
   priority. It slightly improved overall MRR without changing Hit Rate or MTTC.
+- The live model produced useful anchored rewrites for a subjective shopping
+  request. A local grounder retained those rewrites while rejecting unsupported
+  category, material, and color inferences before they reached retrieval.
+- A hard process call cap, successful-result cache, and zero-token cache-hit
+  accounting bound paid usage without weakening the offline fallback.
 
 ## What did not work
 
@@ -94,6 +103,10 @@ latency yet.
   4.75 ms per message. It exposed useful syntax but did not ground shopping
   attributes: `7` and `80` remained generic cardinals and `blue/` was tagged as
   a number. The deterministic resolver took about 4 microseconds per message.
+- The first live LLM response deviated from the requested list limits, and a
+  second request exceeded the original 4-second timeout. Bounded tolerant
+  parsing and a provisional 6-second timeout addressed compatibility, but the
+  gateway still needs a larger reliability and p95 sample.
 
 ## Feasibility
 
@@ -113,5 +126,5 @@ rerank depth still need joint recall/latency tuning.
 
 The public set has only 200 sessions. Current numeric weights are engineering
 guesses informed by public diagnostics and need target-ASIN-disjoint validation.
-No private-set performance, LLM quality, production user impact, or external API
-reliability is claimed.
+No private-set performance, LLM score gain, production user impact, provider
+cost, or external API reliability is claimed.

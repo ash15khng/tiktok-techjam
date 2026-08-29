@@ -80,9 +80,14 @@ subjective needs, and soft slot hypotheses. It is gated to subjective or complex
 language, cannot generate ASINs, and falls back to an empty semantic result on
 failure.
 
-The adapter has only mocked contract tests because no API key is available.
-Quality, latency, token cost, model choice, and end-to-end score must be measured
-before enabling it for official runs. See [llm-integration.md](llm-integration.md).
+The provider is protected by a call cap and successful-result cache. Before
+retrieval, rewrites require a lexical anchor and soft slots require exact
+evidence, sufficient confidence, and an accepted attribute. Deterministic
+constraints always win.
+
+One live `llama3.1:8b` compatibility call succeeded at roughly 4.2 seconds with
+343 input and 158 output tokens. That is not a quality, p95 latency, cost, or
+end-to-end score measurement. See [llm-integration.md](llm-integration.md).
 
 ## Tuning status
 

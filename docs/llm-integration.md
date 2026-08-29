@@ -6,9 +6,9 @@ The optional semantic parser uses the SoCLaaS Responses-compatible endpoint and
 is disabled unless its enable flag, model, HTTPS base URL, and API key are all
 present. The deterministic interpreter remains the fallback.
 
-The adapter has mocked contract tests but has not yet been measured with the
-team's real gateway key. Do not claim model quality, latency, cost, or score
-improvement until the live probe and controlled evaluator runs are recorded.
+The adapter has mocked contract tests and one successful live compatibility
+probe. This confirms the endpoint and response parser, but not model quality,
+p95 latency, monetary cost, or score improvement.
 
 ## Local `.env` setup
 
@@ -16,7 +16,9 @@ Copy `.env.example` to `.env`, then edit only the ignored `.env` file:
 
 ```text
 SHOPPING_COPILOT_LLM_ENABLED=1
+SHOPPING_COPILOT_LLM_MAX_CALLS=64
 SHOPPING_COPILOT_LLM_MODEL=llama3.1:8b
+SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS=6
 SOCLAAS_BASE_URL=https://your-real-gateway.example/v1
 SOCLAAS_API_KEY=replace-locally
 ```
@@ -27,8 +29,9 @@ rejected; HTTP is allowed only for localhost development.
 
 The application loads the repository `.env` without another package. Existing
 OS environment variables take precedence, so deployment or terminal secrets
-cannot be silently replaced by file values. Only the four documented runtime
-keys are accepted from the file.
+cannot be silently replaced by file values. Only documented runtime keys are
+accepted from the file. The call cap is shared across the process; lower it for
+demos or development when a stricter spending ceiling is needed.
 
 `.env` is covered by `.gitignore`; `.env.example` contains placeholders only.
 Verify before every commit:
@@ -49,7 +52,9 @@ in the terminal that runs the agent:
 
 ```powershell
 $env:SHOPPING_COPILOT_LLM_ENABLED = "1"
+$env:SHOPPING_COPILOT_LLM_MAX_CALLS = "64"
 $env:SHOPPING_COPILOT_LLM_MODEL = "llama3.1:8b"
+$env:SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS = "6"
 $env:SOCLAAS_BASE_URL = "https://your-real-gateway.example/v1"
 $env:SOCLAAS_API_KEY = "paste-the-key-in-your-own-terminal"
 python -m shopping_copilot.llm_smoke_test
@@ -89,6 +94,8 @@ The adapter does not send `background`, `store`, `text.format`, hosted tools, or
 `previous_response_id`. Temporary gateway response state is unnecessary because
 the current Context Snapshot is supplied on every call. The returned JSON is
 validated locally; a single `json` code fence is tolerated for the 8B model.
+Successful repeated message/context pairs are cached, and cache hits report zero
+tokens because no new request is made. Failed requests are not retried.
 
 ## Product behavior and fallback
 
@@ -96,10 +103,15 @@ The model is called only for subjective or complex messages such as:
 
 > I need something polished but comfortable for a humid outdoor wedding.
 
-It may return short query rewrites, subjective needs, and soft attribute
-hypotheses with supporting evidence. It cannot create product IDs. Numeric
-comparisons, negation, overrides, exact catalog grounding, and contextual short
-answers remain authoritative in deterministic code.
+It may return short query rewrites, subjective needs, and soft `feature`,
+`style`, or `use_case` hypotheses. Rewrites must share an anchor with the current
+message or Active State. Slot hypotheses require confidence of at least `0.55`
+and an exact evidence span. Deterministic evidence wins on conflict.
+
+Subjective summaries are retained for diagnostics but are not added directly to
+BM25. Model-produced identifiers, negated rewrites, unsupported attributes, and
+ungrounded hints are discarded. Numeric comparisons, exclusions, corrections,
+catalog identity, and contextual short answers remain deterministic.
 
 Timeouts, HTTP errors, incomplete responses, invalid JSON, or invalid fields
 become an empty semantic result during normal agent operation. Run the one-call
@@ -112,5 +124,25 @@ python -m shopping_copilot.llm_smoke_test
 Only after that succeeds should the team run the official evaluator and record
 model name, latency, token use, cost, fallback rate, scenario metrics, and the
 deterministic comparison.
+
+## Measured live probe
+
+On 2026-08-29, three deliberate requests were attempted:
+
+- the first completed but the initial strict parser rejected a list-shape
+  deviation;
+- the second reached the original 4-second timeout;
+- the third succeeded with the provisional 6-second timeout in about 4.2
+  seconds, reporting 343 input and 158 output tokens.
+
+The successful response produced two anchored rewrites. It also inferred
+category, material, and color without sufficient support; the retrieval
+grounder rejected those slots. The prompt was then narrowed to request only the
+three accepted soft attributes. No further live call and no paid public-set
+evaluation were run.
+
+A no-network replay of all 200 public sessions found 13 eligible semantic calls
+and 12 unique message/context pairs. This estimates call volume only, not score.
+Provider pricing was not supplied, so monetary cost is not claimed.
 
 The request shape follows the official [OpenAI Responses API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create), while the supported-field subset and gateway-state limitations come from the SoCLaaS documentation supplied to the team.

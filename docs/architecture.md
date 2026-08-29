@@ -110,7 +110,8 @@ shopping_copilot/
 |   |-- models.py                    IntentFrame and SlotUpdate
 |   |-- contextual.py                Short/elliptical reply resolution
 |   |-- interpreter.py               Deterministic parsing coordinator
-|   `-- semantic.py                  Optional SemanticParser adapter
+|   |-- semantic.py                  Optional provider, cost gate, cache
+|   `-- semantic_grounding.py        Retrieval-safe hint validation
 |
 |-- dialog/
 |   |-- models.py                    SessionState and ActiveState
@@ -494,12 +495,18 @@ temperature, and the configured timeout. Because the gateway does not list
 `text.format` among its supported fields, the prompt requests one JSON object
 and the adapter validates it locally.
 
-The schema returns short query rewrites, subjective needs, and soft slot
-hypotheses. It cannot return product identifiers. Model confidence is capped at
-`0.70`; numeric comparisons, negation, overrides, and exact catalog grounding
-remain authoritative in deterministic code. Invalid JSON, schema mismatch,
-timeout, provider error, or incomplete configuration produces an empty semantic
-interpretation and leaves the reliable path unchanged.
+The response returns at most two rewrites, three subjective needs, and four soft
+slot hypotheses. `GatedSemanticParser` applies a process-level call cap, caches
+successful repeated message/context pairs, records credential-free call/token/
+latency counters, and never retries a failed billed request.
+
+`semantic_grounding.py` allows only `feature`, `style`, and `use_case` slots with
+an exact current-message evidence span and confidence at least `0.55`.
+Deterministic extraction wins for an attribute. Rewrites must share a lexical
+anchor with the current message or Active State; negated rewrites and generated
+ASIN-like identifiers are rejected. Subjective summaries remain diagnostic and
+do not enter BM25 directly. Invalid JSON, timeout, provider error, exhausted call
+budget, or incomplete configuration leaves the reliable path unchanged.
 
 ### 7.7 Raw evidence preservation
 
@@ -951,13 +958,19 @@ The optional Responses-compatible adapter is enabled only when
 is deliberately no implicit credential or endpoint. Without complete opt-in the
 factory returns `DisabledSemanticParser`.
 
+`SHOPPING_COPILOT_LLM_MAX_CALLS` and
+`SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS` optionally override the default 64-call
+process budget and provisional 6-second hard timeout.
+
 The runtime loads only those approved values from the ignored repository `.env`
 or a file selected through `SHOPPING_COPILOT_ENV_FILE`; OS variables take
 precedence. Git ignore is not an access-control boundary, so credentials that
 must not reside in the workspace are injected by the user's shell or secret
 manager.
 
-Optional model calls require an explicit timeout, input-size limit, schema validation, token accounting, deterministic fallback, and provider/model identifier in the run report.
+Optional model calls require an explicit timeout, input-size limit, local shape
+validation and grounding, token accounting, deterministic fallback, and
+provider/model identifier in the run report.
 
 Generated indexes, vectors, traces, experiment reports, and research remain under ignored paths such as `artifacts/`, `experiments/`, and `analysis/`. Only source, tests, safe example configuration, and final product documentation are committed.
 
@@ -1060,7 +1073,7 @@ Initial engineering budgets, subject to organizer limits:
 catalog startup                 <= 10 seconds on a laptop
 reliable-path p95 respond       <= 500 ms
 dense-path p95 respond          <= 1.5 seconds
-optional model hard timeout     <= 4 seconds
+optional model hard timeout     <= 6 seconds (provisional live-probe value)
 peak memory without embeddings  <= 500 MiB
 peak memory with embeddings     <= 1 GiB
 contract failure rate           0
@@ -1103,7 +1116,9 @@ Implement posterior-weighted partitioning, answerability checks, `other` fallbac
 
 ### Slice 6: gated semantic stages
 
-Add dense retrieval, cross encoder, or LLM parsing only when a retained experiment documents the precise failure being addressed.
+The gated and grounded LLM parser is implemented. Dense retrieval and a cross
+encoder remain deferred until a retained experiment documents the precise
+failure and benefit.
 
 ## 23. Definition of done
 
@@ -1152,7 +1167,7 @@ Add dense retrieval, cross encoder, or LLM parsing only when a retained experime
 | Content-derived product graph | Alias/co-occurrence expansion is a recall bottleneck | Marginal recall gain without candidate diffusion |
 | Dense embeddings | Vocabulary mismatch misses targets | Candidate recall gain at 100/300 within memory budget |
 | Cross encoder | Candidate recall is high but MRR is low | Held-out MRR gain within latency budget |
-| LLM structured parser | Rule/catalog parser leaves important clauses unresolved | Frame accuracy and end-to-end gain with schema-valid output |
+| LLM structured parser | Rule/catalog parser leaves important clauses unresolved | Grounded-frame accuracy and end-to-end gain with locally valid output |
 | Maximal marginal relevance | Near-duplicate exploratory results are measured | Browsing gain without overall Hit Rate loss |
 
 Do not implement collaborative filtering, purchase-sequence models, social signals, multimodal retrieval, or review-based inference: the Agent does not receive the required source data.
