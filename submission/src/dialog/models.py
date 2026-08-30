@@ -74,6 +74,10 @@ class SessionState:
     active: ActiveState = field(default_factory=ActiveState)
     last_ask_attribute: str | None = None
     last_recommendations: tuple[str, ...] = ()
+    # At most ten small contract responses are retained. This makes retries
+    # idempotent without storing provider payloads or unbounded history.
+    responses_by_turn: dict[int, dict] = field(default_factory=dict)
+    last_completed_turn: int = 0
     recommendation_exposure: set[str] = field(default_factory=set)
     turn_count: int = 0
     last_feedback_negative: bool = False

@@ -139,6 +139,33 @@ class AgentIntegrationTest(unittest.TestCase):
         second_ids = {item["parent_asin"] for item in second["recommendations"]}
         self.assertFalse(first_ids & second_ids)
 
+    def test_duplicate_turn_returns_cached_response_without_mutating_state(self) -> None:
+        first = self.agent.respond("session", "I'm looking for red shoes.", 1, 10)
+        state = self.agent._agent.sessions.get("session")
+
+        duplicate = self.agent.respond("session", "Actually make them black.", 1, 10)
+
+        self.assertEqual(duplicate, first)
+        self.assertEqual(state.turn_count, 1)
+        self.assertNotIn("black", state.active.query_terms())
+        self.assertEqual(len(state.responses_by_turn), 1)
+
+    def test_component_failure_reuses_last_successful_recommendations(self) -> None:
+        first = self.agent.respond("session", "I'm looking for shoes.", 1, 2)
+        expected = [item["parent_asin"] for item in first["recommendations"]]
+
+        def fail_retrieval(*_args, **_kwargs):
+            raise RuntimeError("synthetic retrieval failure")
+
+        self.agent._agent.retriever.retrieve = fail_retrieval
+        recovered = self.agent.respond("session", "Something different.", 2, 2)
+
+        self.assertEqual(
+            [item["parent_asin"] for item in recovered["recommendations"]],
+            expected,
+        )
+        self.assertEqual(recovered["ask_attribute"], None)
+
     def test_real_user_budget_and_exclusion_affect_the_end_to_end_list(self) -> None:
         response = self.agent.respond(
             "session",

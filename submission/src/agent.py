@@ -19,6 +19,7 @@ Outputs:
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 from submission.src.catalog.normalization import tokenize
@@ -76,6 +77,15 @@ class ShoppingAgent:
         """Interpret, retrieve, rank, ask if useful, and return a safe response."""
 
         state = self.sessions.get(session_id)
+        requested_turn = int(turn)
+        cached = state.responses_by_turn.get(requested_turn)
+        if cached is not None:
+            return deepcopy(cached)
+        if requested_turn <= state.last_completed_turn:
+            # A late out-of-order request must not replay state transitions.
+            latest = state.responses_by_turn.get(state.last_completed_turn)
+            if latest is not None:
+                return deepcopy(latest)
         try:
             # Parse the turn into an immutable delta before mutating session state.
             frame = self.interpreter.parse_deterministic(
@@ -129,7 +139,12 @@ class ShoppingAgent:
                         # Rerank once because semantic evidence changed Active State.
                         assessment, ranked = self._retrieve_and_rank(state)
             ranked = unseen_first(ranked, state.recommendation_exposure)
-            question = self.question_policy.choose(state, ranked, assessment, turn)
+            question = self.question_policy.choose(
+                state,
+                ranked,
+                assessment,
+                requested_turn,
+            )
             recommendations = tuple(item.parent_asin for item in ranked)
             message = explain(state.active)
             if question.message:
@@ -137,7 +152,6 @@ class ShoppingAgent:
             state.last_ask_attribute = question.ask_attribute
             if question.ask_attribute:
                 state.active.asked_attributes.append(question.ask_attribute)
-            state.last_recommendations = recommendations[: self.config.max_recommendations]
             response = self.guard.build(
                 message=message,
                 ask_attribute=question.ask_attribute,
@@ -149,21 +163,45 @@ class ShoppingAgent:
             state.recommendation_exposure.update(
                 item["parent_asin"] for item in response["recommendations"]
             )
-            return response
+            return self._remember_response(state, requested_turn, response)
         except Exception:
-            # A component failure must still produce valid frozen-catalog IDs.
-            fallback_terms = tokenize(user_message)[: self.config.max_query_terms]
-            fallback = self.catalog.search(
-                fallback_terms,
-                weights=FIELD_WEIGHTS,
-                limit=min(int(top_k), self.config.max_recommendations),
-            )
-            return self.guard.build(
+            # Preserve the last successful list before attempting fresh FTS.
+            # A nested fallback guard keeps even catalog-search failures safe.
+            fallback_ids = state.last_recommendations
+            if not fallback_ids:
+                try:
+                    fallback_terms = tokenize(user_message)[: self.config.max_query_terms]
+                    fallback = self.catalog.search(
+                        fallback_terms,
+                        weights=FIELD_WEIGHTS,
+                        limit=min(int(top_k), self.config.max_recommendations),
+                    )
+                    fallback_ids = tuple(item.parent_asin for item in fallback)
+                except Exception:
+                    fallback_ids = ()
+            response = self.guard.build(
                 message="I used the reliable catalog search fallback for these matches.",
                 ask_attribute=None,
-                recommendations=(item.parent_asin for item in fallback),
+                recommendations=fallback_ids,
                 top_k=top_k,
             )
+            return self._remember_response(state, requested_turn, response)
+
+    @staticmethod
+    def _remember_response(
+        state: SessionState,
+        turn: int,
+        response: dict,
+    ) -> dict:
+        """Store one bounded response snapshot and return an isolated copy."""
+
+        snapshot = deepcopy(response)
+        state.responses_by_turn[int(turn)] = snapshot
+        state.last_completed_turn = max(state.last_completed_turn, int(turn))
+        state.last_recommendations = tuple(
+            item["parent_asin"] for item in snapshot["recommendations"]
+        )
+        return deepcopy(snapshot)
 
     def diagnostics(self) -> dict[str, dict[str, int | float]]:
         """Return credential-free semantic gate/provider counters."""
