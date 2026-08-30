@@ -18,24 +18,42 @@ def evaluate_constraint(
 
         budget_max: float | None = None
         budget_min: float | None = None
-        for v in constraint.values:
+        if len(constraint.values) >= 2:
             try:
-                num = float(v)
-                if constraint.relation in (Relation.LTE, Relation.LT, Relation.EQ):
-                    budget_max = num
-                elif constraint.relation in (Relation.GTE, Relation.GT):
-                    budget_min = num
+                budget_min = float(constraint.values[0])
+                budget_max = float(constraint.values[1])
             except ValueError:
                 pass
+        else:
+            for v in constraint.values:
+                try:
+                    num = float(v)
+                    if constraint.relation in (Relation.LTE, Relation.LT, Relation.EQ):
+                        budget_max = num
+                    elif constraint.relation in (Relation.GTE, Relation.GT):
+                        budget_min = num
+                except ValueError:
+                    pass
 
         if record.price.matches_budget(budget_max=budget_max, budget_min=budget_min):
             return "match"
+
+        # Soft tolerance margin (10% over max budget)
+        if budget_max is not None and record.price.lower is not None:
+            if record.price.lower <= budget_max * 1.10:
+                return "unknown"
+
         return "contradiction"
 
     attr_name = constraint.attribute.value
     prod_values = record.attributes.get(attr_name)
 
     if not prod_values:
+        # Check title or search fields for positive match before falling back to unknown
+        if constraint.relation != Relation.NEQ:
+            title_lower = record.search_fields.get("title", "").lower()
+            if title_lower and any(v.lower() in title_lower for v in constraint.values):
+                return "match"
         # Missing attribute is strictly UNKNOWN; never a contradiction
         return "unknown"
 

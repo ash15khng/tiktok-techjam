@@ -27,6 +27,8 @@ from shopping_copilot.understanding.rules import (
     extract_budget_slots,
     extract_negation_spans,
     extract_size_slots,
+    split_conjunction_items,
+    strip_conversational_filler,
 )
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)?", re.IGNORECASE)
@@ -212,23 +214,55 @@ class MessageInterpreter:
             )
 
         # -------------------------------------------------------------------
-        # Step 5: Elliptical / Contextual Fallback for Last Asked Attribute
+        # Step 5: Elliptical / Contextual Fallback for Last Asked Attribute & Multi-Items
         # -------------------------------------------------------------------
-        if last_ask and not slot_updates and not is_indifference:
-            # The entire reply might be a direct response to the asked attribute
-            # E.g. last_ask=color, reply="navy and dark grey"
-            clean_reply = raw_message.strip(" -;,.")
-            if clean_reply:
-                # Try fuzzy link or direct assignment
-                linked_val, score, amb = self.linker.link_span(clean_reply, last_ask)
+        if not is_indifference:
+            candidate_items = split_conjunction_items(raw_message)
+            for item_phrase in candidate_items:
+                # Check if this item phrase was already captured by previous steps
+                if any(
+                    item_phrase.lower() in (s.raw_span or "").lower()
+                    or (s.raw_span or "").lower() in item_phrase.lower()
+                    for s in slot_updates
+                ):
+                    continue
+
+                # Check trie scan on this specific phrase
+                item_trie_matches = self.trie.scan(item_phrase)
+                if item_trie_matches:
+                    for attr, canonical_val, r_span, c_span in item_trie_matches:
+                        if not any(
+                            s.attribute == attr and canonical_val in s.normalized_values
+                            for s in slot_updates
+                        ):
+                            slot_updates.append(
+                                SlotUpdate(
+                                    attribute=attr,
+                                    operation="replace" if is_override else ("set" if attr == Attribute.CATEGORY else "add"),
+                                    relation=Relation.EQ,
+                                    normalized_values=(canonical_val,),
+                                    raw_span=r_span,
+                                    char_span=(0, len(raw_message)),
+                                    strength=default_strength,
+                                    explicitness="explicit",
+                                    confidence=self.config.confidence_catalog_exact,
+                                    provenance="catalog_exact",
+                                    source_turn=turn,
+                                )
+                            )
+                    continue
+
+                # If we asked a specific attribute, attempt linking or assign to last_ask
+                target_attr = last_ask or Attribute.FEATURE
+                linked_val, score, amb = self.linker.link_span(item_phrase, target_attr)
                 if linked_val:
                     slot_updates.append(
                         SlotUpdate(
-                            attribute=last_ask,
-                            operation="replace" if is_override else "set",
+                            attribute=target_attr,
+                            operation="replace" if is_override else "add",
                             relation=Relation.EQ,
                             normalized_values=(linked_val,),
-                            raw_span=clean_reply,
+                            raw_span=item_phrase,
                             char_span=(0, len(raw_message)),
                             strength=default_strength,
                             explicitness="explicit",
@@ -240,22 +274,24 @@ class MessageInterpreter:
                 elif amb:
                     ambiguities.append(amb)
                 else:
-                    # Inferred value
-                    slot_updates.append(
-                        SlotUpdate(
-                            attribute=last_ask,
-                            operation="replace" if is_override else "set",
-                            relation=Relation.CONTAINS,
-                            normalized_values=(normalize_token(clean_reply),),
-                            raw_span=clean_reply,
-                            char_span=(0, len(raw_message)),
-                            strength="soft",
-                            explicitness="inferred",
-                            confidence=self.config.confidence_inferred,
-                            provenance="semantic",
-                            source_turn=turn,
+                    norm_tok = normalize_token(item_phrase)
+                    if norm_tok and len(norm_tok) > 2 and norm_tok not in STOPWORDS:
+                        slot_updates.append(
+                            SlotUpdate(
+                                attribute=target_attr,
+                                operation="replace" if is_override else "add",
+                                relation=Relation.CONTAINS,
+                                normalized_values=(norm_tok,),
+                                raw_span=item_phrase,
+                                char_span=(0, len(raw_message)),
+                                strength="soft",
+                                explicitness="inferred",
+                                confidence=self.config.confidence_inferred,
+                                provenance="semantic",
+                                source_turn=turn,
+                            )
                         )
-                    )
+
 
         # -------------------------------------------------------------------
         # Step 6: Extract Product Terms & Subjective Needs

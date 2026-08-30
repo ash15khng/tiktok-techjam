@@ -126,13 +126,17 @@ class QuestionPolicy:
             # Information gain = Gini * coverage
             gain = gini * min(1.0, coverage)
 
-            if len(counts) >= 2 and gain > best_gain:
-                best_gain = gain
-                best_attr = attr_str
-
-        # If gain is negligible and we have high focus or few turns, don't ask
+        # If gain is negligible, fall back to generalized domain attribute priority for turns 1-9
         if best_gain < 0.10:
-            best_attr = None
+            priority_order = (
+                "material", "color", "style", "brand", "budget",
+                "use_case", "size", "feature", "other",
+            )
+            for fallback_candidate in priority_order:
+                if fallback_candidate in eligible:
+                    best_attr = fallback_candidate
+                    best_gain = 0.05
+                    break
 
         if best_attr is not None:
             question_text = ATTRIBUTE_QUESTIONS.get(

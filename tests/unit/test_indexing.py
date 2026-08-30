@@ -152,6 +152,12 @@ class TestCatalogIndex(unittest.TestCase):
         # Cowhide and leather should have high IDF since they are discriminative
         self.assertTrue(self.index.compute_idf("cowhide") > 0)
 
+    def test_porter_stemmer_matching(self) -> None:
+        # "jackets" should match product with "jacket", "running" should match "runner"
+        results = self.index.search_bm25("jackets")
+        asins = {asin for asin, score in results}
+        self.assertIn("B001", asins)
+
 
 if __name__ == "__main__":
     unittest.main()

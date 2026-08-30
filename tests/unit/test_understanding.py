@@ -153,6 +153,20 @@ class TestMessageInterpreter(unittest.TestCase):
         self.assertEqual(frame.slot_updates[0].attribute, Attribute.COLOR)
         self.assertEqual(frame.slot_updates[0].normalized_values, ("navy",))
 
+    def test_multi_item_conjunction_reply(self) -> None:
+        context = DialogueContext(
+            active_state=ActiveState(),
+            last_ask_attribute=Attribute.MATERIAL,
+            turn=2,
+        )
+        msg = "For that, what matters is: cotton; spandex."
+        frame = self.interpreter.parse(msg, context=context)
+        attrs = {s.attribute for s in frame.slot_updates}
+        values = {v for s in frame.slot_updates for v in s.normalized_values}
+        self.assertIn(Attribute.MATERIAL, attrs)
+        self.assertIn("cotton", values)
+        self.assertIn("spandex", values)
+
 
 if __name__ == "__main__":
     unittest.main()

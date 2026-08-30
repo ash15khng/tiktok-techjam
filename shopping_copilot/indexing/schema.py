@@ -10,7 +10,7 @@ CREATE VIRTUAL TABLE products USING fts5(
     details,
     store,
     description,
-    tokenize='unicode61 remove_diacritics 2'
+    tokenize='porter unicode61 remove_diacritics 2'
 );
 """
 

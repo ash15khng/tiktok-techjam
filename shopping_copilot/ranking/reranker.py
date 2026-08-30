@@ -103,12 +103,13 @@ class LightweightReranker:
             avg_rating = record.average_rating or 0.0
             popularity = min(1.0, (math.log1p(max(num_ratings, 0)) / math.log1p(1000)) * (max(avg_rating, 0.0) / 5.0))
 
-            # Profile preference boost (capped at 0.05)
+            # Profile preference boost (dynamically weighted higher on early turns)
             profile_boost = 0.0
             if request.profile_preferences:
                 searchable = " ".join(record.search_fields.values()).lower()
                 matching_prefs = sum(1 for p in request.profile_preferences if p.lower() in searchable)
-                profile_boost = min(0.05, (matching_prefs / len(request.profile_preferences)) * 0.05)
+                weight_scale = max(0.02, 0.08 - 0.015 * len(all_constraints))
+                profile_boost = (matching_prefs / len(request.profile_preferences)) * weight_scale
 
             # Combined final score
             final_score = (

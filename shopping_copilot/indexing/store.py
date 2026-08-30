@@ -122,7 +122,16 @@ class CatalogIndex:
 
     def compute_idf(self, term: str) -> float:
         """Calculates Lucene/BM25 IDF for a single term."""
-        df = self._doc_frequencies.get(term.lower(), 0)
+        t = term.lower()
+        df = self._doc_frequencies.get(t, 0)
+        if df == 0 and len(t) > 3:
+            # Check stem variants for porter-tokenized vocabulary table
+            for suffix in ("ing", "es", "ed", "ies", "s", "e"):
+                if t.endswith(suffix):
+                    stem = t[: -len(suffix)]
+                    if stem in self._doc_frequencies:
+                        df = self._doc_frequencies[stem]
+                        break
         n = self._total_docs
         if n == 0 or df == 0:
             return 0.0

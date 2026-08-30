@@ -320,3 +320,32 @@ def determine_modality_strength(text: str, default: Literal["hard", "soft"] = "h
     if SOFT_MODALITY_RE.search(text):
         return "soft"
     return default
+
+
+CONVERSATIONAL_PREFIX_RE = re.compile(
+    r"^(?:for\s+that,?\s*)?(?:what\s+matters\s+is|a\s+key\s+requirement\s+is|key\s+requirement\s+is|"
+    r"i\s+need|i\s+prefer|i\s+want|my\s+preference\s+is|please\s+look\s+for|must\s+have|ideally)\s*[:=,-]?\s*",
+    re.IGNORECASE,
+)
+
+
+def strip_conversational_filler(text: str) -> str:
+    """Strips leading conversational filler phrases to isolate constraint expressions."""
+    cleaned = CONVERSATIONAL_PREFIX_RE.sub("", text.strip()).strip()
+    return cleaned.rstrip(" .;")
+
+
+def split_conjunction_items(text: str) -> list[str]:
+    """Splits a composite constraint string into individual discrete value phrases."""
+    cleaned = strip_conversational_filler(text)
+    if not cleaned:
+        return []
+    # Split on semicolons or commas (excluding commas within digits)
+    parts = re.split(r";|(?<!\d),(?!\d)|\b(?:and|as\s+well\s+as)\b", cleaned, flags=re.IGNORECASE)
+    items: list[str] = []
+    for p in parts:
+        item = p.strip(" -;,.\t\n")
+        if item and len(item) > 1:
+            items.append(item)
+    return items
+
