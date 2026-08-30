@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from shopping_copilot.dialog.models import SessionState
-from shopping_copilot.understanding.models import IntentFrame
+from submission.src.dialog.models import SessionState
+from submission.src.understanding.models import IntentFrame
 
 
 def _append_unique(values: list[str], additions: tuple[str, ...]) -> None:

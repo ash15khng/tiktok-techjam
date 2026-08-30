@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from shopping_copilot.catalog.normalization import tokenize
+from submission.src.catalog.normalization import tokenize
 
 
 @dataclass

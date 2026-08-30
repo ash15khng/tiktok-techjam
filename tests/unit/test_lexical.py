@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.catalog.models import CatalogSearchResult, ProductRecord
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import ActiveState
-from shopping_copilot.retrieval.lexical import LexicalRetriever
-from shopping_copilot.retrieval.models import RetrievalPlan
+from submission.src.catalog.models import CatalogSearchResult, ProductRecord
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import ActiveState
+from submission.src.retrieval.lexical import LexicalRetriever
+from submission.src.retrieval.models import RetrievalPlan
 
 
 def _product(parent_asin: str, rating_number: int) -> ProductRecord:

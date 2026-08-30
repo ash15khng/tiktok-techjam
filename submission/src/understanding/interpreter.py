@@ -5,15 +5,15 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from shopping_copilot.catalog.attributes import AttributeValueResolver, EmptyAttributeResolver
-from shopping_copilot.catalog.normalization import normalize_text
-from shopping_copilot.contracts import DisabledSemanticParser, SemanticParser
-from shopping_copilot.understanding.contextual import (
+from submission.src.catalog.attributes import AttributeValueResolver, EmptyAttributeResolver
+from submission.src.catalog.normalization import normalize_text
+from submission.src.contracts import DisabledSemanticParser, SemanticParser
+from submission.src.understanding.contextual import (
     contextual_no_preference,
     resolve_reply_value,
 )
-from shopping_copilot.understanding.models import Attribute, IntentFrame, SlotUpdate
-from shopping_copilot.understanding.semantic_grounding import ground_semantic_interpretation
+from submission.src.understanding.models import Attribute, IntentFrame, SlotUpdate
+from submission.src.understanding.semantic_grounding import ground_semantic_interpretation
 
 
 CATEGORY_RE = re.compile(

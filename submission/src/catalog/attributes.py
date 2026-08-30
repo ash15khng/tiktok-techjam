@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
 
-from shopping_copilot.catalog.models import ProductRecord
-from shopping_copilot.catalog.normalization import normalize_text, tokenize
+from submission.src.catalog.models import ProductRecord
+from submission.src.catalog.normalization import normalize_text, tokenize
 
 
 @dataclass(frozen=True)

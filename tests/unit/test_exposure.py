@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.ranking.exposure import unseen_first
-from shopping_copilot.retrieval.models import CandidateEvidence
+from submission.src.ranking.exposure import unseen_first
+from submission.src.retrieval.models import CandidateEvidence
 
 
 class RecommendationExposureTest(unittest.TestCase):

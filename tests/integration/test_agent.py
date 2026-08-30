@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shopping_copilot.agent import ShoppingAgent
-from shopping_copilot.contracts import ALLOWED_ATTRIBUTES, SemanticInterpretation, SemanticSlotHypothesis
+from submission.src.agent import ShoppingAgent
+from submission.src.contracts import ALLOWED_ATTRIBUTES, SemanticInterpretation, SemanticSlotHypothesis
 from starter.agent import Agent
 
 

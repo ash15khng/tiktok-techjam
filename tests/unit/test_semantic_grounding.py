@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.contracts import SemanticInterpretation, SemanticSlotHypothesis
-from shopping_copilot.understanding.models import Attribute, SlotUpdate
-from shopping_copilot.understanding.semantic_grounding import ground_semantic_interpretation
+from submission.src.contracts import SemanticInterpretation, SemanticSlotHypothesis
+from submission.src.understanding.models import Attribute, SlotUpdate
+from submission.src.understanding.semantic_grounding import ground_semantic_interpretation
 
 
 class SemanticGroundingTest(unittest.TestCase):

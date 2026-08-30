@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from shopping_copilot.contracts import SemanticSlotHypothesis
+from submission.src.contracts import SemanticSlotHypothesis
 
 
 class Attribute(str, Enum):

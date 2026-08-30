@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import ActiveState, SessionState
-from shopping_copilot.dialog.policy import QuestionPolicy
-from shopping_copilot.retrieval.models import RetrievalAssessment
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import ActiveState, SessionState
+from submission.src.dialog.policy import QuestionPolicy
+from submission.src.retrieval.models import RetrievalAssessment
 
 
 class QuestionPolicyTest(unittest.TestCase):

@@ -8,8 +8,8 @@ import statistics
 from collections import Counter
 from pathlib import Path
 
-from shopping_copilot.agent import ShoppingAgent
-from shopping_copilot.contracts import DisabledSemanticParser, SemanticParser
+from submission.src.agent import ShoppingAgent
+from submission.src.contracts import DisabledSemanticParser, SemanticParser
 
 
 DEFAULT_CASES = Path(__file__).with_name("hard_cases.json")

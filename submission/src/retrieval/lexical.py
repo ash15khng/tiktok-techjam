@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from shopping_copilot.catalog.store import (
+from submission.src.catalog.store import (
     CATEGORY_WEIGHTS,
     CONSTRAINT_WEIGHTS,
     FIELD_WEIGHTS,
     TITLE_WEIGHTS,
     CatalogStore,
 )
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import ActiveState
-from shopping_copilot.retrieval.models import RetrievalPlan
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import ActiveState
+from submission.src.retrieval.models import RetrievalPlan
 
 
 class LexicalRetriever:

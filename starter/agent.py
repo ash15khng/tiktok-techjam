@@ -1,18 +1,10 @@
-from __future__ import annotations
+"""Compatibility import for the unmodified local evaluator.
 
-from pathlib import Path
+The final submission entry point is :mod:`submission.agent`. Keeping this shim
+allows ``python -m evaluator.local_evaluator`` to run without editing the
+organizer-provided evaluator.
+"""
 
-from shopping_copilot.agent import ShoppingAgent
+from submission.agent import Agent
 
-
-class Agent:
-    """Official evaluator adapter; product logic lives in shopping_copilot."""
-
-    def __init__(self, catalog_path: str | Path = "data/catalog.jsonl") -> None:
-        self._agent = ShoppingAgent(catalog_path)
-
-    def reset(self, session_id: str, user_profile: dict) -> None:
-        self._agent.reset(session_id, user_profile)
-
-    def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
-        return self._agent.respond(session_id, user_message, turn, top_k)
+__all__ = ["Agent"]

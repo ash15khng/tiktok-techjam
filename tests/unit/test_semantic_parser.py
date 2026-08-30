@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.contracts import DisabledSemanticParser, SemanticInterpretation, SemanticParserError
-from shopping_copilot.understanding.semantic import (
+from submission.src.config import MVPConfig
+from submission.src.contracts import DisabledSemanticParser, SemanticInterpretation, SemanticParserError
+from submission.src.understanding.semantic import (
     GatedSemanticParser,
     ResponsesSemanticParser,
     SEMANTIC_TOOL_NAME,

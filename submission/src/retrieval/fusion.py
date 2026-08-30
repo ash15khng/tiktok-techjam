@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shopping_copilot.retrieval.models import CandidateEvidence
+from submission.src.retrieval.models import CandidateEvidence
 
 
 def reciprocal_rank_fusion(
@@ -26,7 +26,7 @@ def reciprocal_rank_fusion(
 
 
 def assess_results(generator_results: dict[str, list], fused: list[CandidateEvidence]):
-    from shopping_copilot.retrieval.models import RetrievalAssessment
+    from submission.src.retrieval.models import RetrievalAssessment
 
     nonempty = [results for results in generator_results.values() if results]
     if len(nonempty) < 2:

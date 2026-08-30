@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from shopping_copilot.catalog.normalization import normalize_text, tokenize
-from shopping_copilot.contracts import SemanticInterpretation, SemanticSlotHypothesis
-from shopping_copilot.understanding.models import Attribute, SlotUpdate
+from submission.src.catalog.normalization import normalize_text, tokenize
+from submission.src.contracts import SemanticInterpretation, SemanticSlotHypothesis
+from submission.src.understanding.models import Attribute, SlotUpdate
 
 
 ASIN_RE = re.compile(r"\bB0[A-Z0-9]{8}\b", re.IGNORECASE)

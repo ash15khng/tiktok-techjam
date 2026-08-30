@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections import Counter
 
-from shopping_copilot.catalog.attributes import QUESTION_TEXT
-from shopping_copilot.catalog.store import CatalogStore
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import QuestionDecision, SessionState
-from shopping_copilot.retrieval.models import CandidateEvidence, RetrievalAssessment
+from submission.src.catalog.attributes import QUESTION_TEXT
+from submission.src.catalog.store import CatalogStore
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import QuestionDecision, SessionState
+from submission.src.retrieval.models import CandidateEvidence, RetrievalAssessment
 
 
 class QuestionPolicy:

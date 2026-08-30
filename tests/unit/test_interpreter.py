@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.contracts import SemanticInterpretation, SemanticSlotHypothesis
-from shopping_copilot.understanding.interpreter import MessageInterpreter
-from shopping_copilot.understanding.models import Attribute
+from submission.src.contracts import SemanticInterpretation, SemanticSlotHypothesis
+from submission.src.understanding.interpreter import MessageInterpreter
+from submission.src.understanding.models import Attribute
 
 
 class _CatalogResolver:

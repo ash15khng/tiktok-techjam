@@ -1,5 +1,5 @@
 """Conversational product discovery agent."""
 
-from shopping_copilot.config import MVPConfig
+from submission.src.config import MVPConfig
 
 __all__ = ["MVPConfig"]

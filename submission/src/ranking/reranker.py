@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import math
 
-from shopping_copilot.catalog.normalization import tokenize
-from shopping_copilot.catalog.store import CatalogStore
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import ActiveState
-from shopping_copilot.ranking.budget import price_signal
-from shopping_copilot.retrieval.models import CandidateEvidence
+from submission.src.catalog.normalization import tokenize
+from submission.src.catalog.store import CatalogStore
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import ActiveState
+from submission.src.ranking.budget import price_signal
+from submission.src.retrieval.models import CandidateEvidence
 
 
 class LightweightReranker:

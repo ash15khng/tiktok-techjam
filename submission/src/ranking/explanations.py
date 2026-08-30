@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shopping_copilot.dialog.models import ActiveState
+from submission.src.dialog.models import ActiveState
 
 
 def explain(active: ActiveState) -> str:

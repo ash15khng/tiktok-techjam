@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.contracts import SemanticParserError
-from shopping_copilot.understanding.semantic_grounding import ground_semantic_interpretation
-from shopping_copilot.understanding.semantic import configured_responses_parser_from_environment
+from submission.src.config import MVPConfig
+from submission.src.contracts import SemanticParserError
+from submission.src.understanding.semantic_grounding import ground_semantic_interpretation
+from submission.src.understanding.semantic import configured_responses_parser_from_environment
 
 
 def main() -> int:

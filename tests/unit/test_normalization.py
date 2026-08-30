@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.catalog.normalization import tokenize
+from submission.src.catalog.normalization import tokenize
 
 
 class NormalizationTest(unittest.TestCase):

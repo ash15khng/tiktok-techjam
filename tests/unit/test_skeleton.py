@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.contracts import DisabledSemanticParser
+from submission.src.config import MVPConfig
+from submission.src.contracts import DisabledSemanticParser
 
 
 class SkeletonTest(unittest.TestCase):

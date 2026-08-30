@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import ActiveState
-from shopping_copilot.retrieval.models import RetrievalAssessment
-from shopping_copilot.understanding.escalation import SemanticEscalationPolicy
-from shopping_copilot.understanding.interpreter import MessageInterpreter
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import ActiveState
+from submission.src.retrieval.models import RetrievalAssessment
+from submission.src.understanding.escalation import SemanticEscalationPolicy
+from submission.src.understanding.interpreter import MessageInterpreter
 
 
 class SemanticEscalationPolicyTest(unittest.TestCase):

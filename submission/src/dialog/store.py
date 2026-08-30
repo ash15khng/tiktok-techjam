@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from threading import RLock
 
-from shopping_copilot.dialog.models import SessionState
+from submission.src.dialog.models import SessionState
 
 
 class SessionStore:

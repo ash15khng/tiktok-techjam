@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.contracts import ResponseGuard
+from submission.src.contracts import ResponseGuard
 
 
 class ResponseGuardTest(unittest.TestCase):

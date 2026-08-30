@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.catalog.models import CatalogSearchResult
-from shopping_copilot.dialog.models import SessionState
-from shopping_copilot.dialog.reducer import StateReducer
-from shopping_copilot.dialog.store import SessionStore
-from shopping_copilot.retrieval.fusion import reciprocal_rank_fusion
-from shopping_copilot.understanding.interpreter import MessageInterpreter
-from shopping_copilot.understanding.models import Attribute, IntentFrame, SlotUpdate
+from submission.src.catalog.models import CatalogSearchResult
+from submission.src.dialog.models import SessionState
+from submission.src.dialog.reducer import StateReducer
+from submission.src.dialog.store import SessionStore
+from submission.src.retrieval.fusion import reciprocal_rank_fusion
+from submission.src.understanding.interpreter import MessageInterpreter
+from submission.src.understanding.models import Attribute, IntentFrame, SlotUpdate
 
 
 class DialogAndFusionTest(unittest.TestCase):

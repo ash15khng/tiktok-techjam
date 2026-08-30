@@ -14,9 +14,9 @@ from threading import RLock
 from time import perf_counter
 from urllib.parse import urlparse
 
-from shopping_copilot.catalog.normalization import normalize_text, tokenize
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.contracts import (
+from submission.src.catalog.normalization import normalize_text, tokenize
+from submission.src.config import MVPConfig
+from submission.src.contracts import (
     ALLOWED_ATTRIBUTES,
     DisabledSemanticParser,
     SemanticInterpretation,
@@ -24,7 +24,7 @@ from shopping_copilot.contracts import (
     SemanticParserError,
     SemanticSlotHypothesis,
 )
-from shopping_copilot.environment import load_runtime_environment
+from submission.src.environment import load_runtime_environment
 
 
 IMPLICIT_OUTCOME_RE = re.compile(

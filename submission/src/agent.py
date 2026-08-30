@@ -4,23 +4,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from shopping_copilot.catalog.normalization import tokenize
-from shopping_copilot.catalog.store import FIELD_WEIGHTS, CatalogStore
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.contracts import DisabledSemanticParser, ResponseGuard, SemanticParser
-from shopping_copilot.dialog.policy import QuestionPolicy
-from shopping_copilot.dialog.reducer import StateReducer
-from shopping_copilot.dialog.models import SessionState
-from shopping_copilot.dialog.store import SessionStore
-from shopping_copilot.ranking.explanations import explain
-from shopping_copilot.ranking.exposure import unseen_first
-from shopping_copilot.ranking.reranker import LightweightReranker
-from shopping_copilot.retrieval.fusion import assess_results, reciprocal_rank_fusion
-from shopping_copilot.retrieval.lexical import LexicalRetriever
-from shopping_copilot.retrieval.planner import RetrievalPlanner
-from shopping_copilot.understanding.interpreter import MessageInterpreter
-from shopping_copilot.understanding.escalation import SemanticEscalationPolicy
-from shopping_copilot.understanding.semantic import semantic_parser_from_environment
+from submission.src.catalog.normalization import tokenize
+from submission.src.catalog.store import FIELD_WEIGHTS, CatalogStore
+from submission.src.config import MVPConfig
+from submission.src.contracts import DisabledSemanticParser, ResponseGuard, SemanticParser
+from submission.src.dialog.policy import QuestionPolicy
+from submission.src.dialog.reducer import StateReducer
+from submission.src.dialog.models import SessionState
+from submission.src.dialog.store import SessionStore
+from submission.src.ranking.explanations import explain
+from submission.src.ranking.exposure import unseen_first
+from submission.src.ranking.reranker import LightweightReranker
+from submission.src.retrieval.fusion import assess_results, reciprocal_rank_fusion
+from submission.src.retrieval.lexical import LexicalRetriever
+from submission.src.retrieval.planner import RetrievalPlanner
+from submission.src.understanding.interpreter import MessageInterpreter
+from submission.src.understanding.escalation import SemanticEscalationPolicy
+from submission.src.understanding.semantic import semantic_parser_from_environment
 
 
 class ShoppingAgent:

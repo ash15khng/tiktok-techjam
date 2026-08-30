@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from shopping_copilot.environment import load_runtime_environment
+from submission.src.environment import load_runtime_environment
 
 
 class EnvironmentLoaderTest(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shopping_copilot.retrieval.models import CandidateEvidence
+from submission.src.retrieval.models import CandidateEvidence
 
 
 def unseen_first(

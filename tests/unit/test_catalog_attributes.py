@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from shopping_copilot.catalog.attributes import CatalogAttributeRegistry
-from shopping_copilot.catalog.models import ProductRecord
-from shopping_copilot.understanding.interpreter import MessageInterpreter
-from shopping_copilot.understanding.models import Attribute
+from submission.src.catalog.attributes import CatalogAttributeRegistry
+from submission.src.catalog.models import ProductRecord
+from submission.src.understanding.interpreter import MessageInterpreter
+from submission.src.understanding.models import Attribute
 
 
 def product(

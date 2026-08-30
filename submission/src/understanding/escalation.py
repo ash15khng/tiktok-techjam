@@ -6,12 +6,12 @@ from collections import Counter
 from dataclasses import dataclass
 from threading import RLock
 
-from shopping_copilot.catalog.normalization import normalize_text, tokenize
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import ActiveState
-from shopping_copilot.retrieval.models import RetrievalAssessment
-from shopping_copilot.understanding.models import IntentFrame
-from shopping_copilot.understanding.semantic import should_call_semantic_parser
+from submission.src.catalog.normalization import normalize_text, tokenize
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import ActiveState
+from submission.src.retrieval.models import RetrievalAssessment
+from submission.src.understanding.models import IntentFrame
+from submission.src.understanding.semantic import should_call_semantic_parser
 
 
 @dataclass(frozen=True)

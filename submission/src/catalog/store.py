@@ -8,9 +8,9 @@ import sqlite3
 from functools import lru_cache
 from pathlib import Path
 
-from shopping_copilot.catalog.attributes import CatalogAttributeRegistry
-from shopping_copilot.catalog.models import CatalogSearchResult, ProductRecord
-from shopping_copilot.catalog.normalization import flatten_text, string_values, tokenize
+from submission.src.catalog.attributes import CatalogAttributeRegistry
+from submission.src.catalog.models import CatalogSearchResult, ProductRecord
+from submission.src.catalog.normalization import flatten_text, string_values, tokenize
 
 
 FIELD_WEIGHTS = (0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0)

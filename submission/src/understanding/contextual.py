@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from shopping_copilot.catalog.attributes import (
+from submission.src.catalog.attributes import (
     AttributeValueResolver,
     EmptyAttributeResolver,
     cue_attributes,
 )
-from shopping_copilot.catalog.normalization import normalize_text, tokenize
-from shopping_copilot.understanding.models import Attribute
+from submission.src.catalog.normalization import normalize_text, tokenize
+from submission.src.understanding.models import Attribute
 
 
 BARE_DECLINES = frozenset(("no", "nope", "none", "any", "anything", "either", "whatever", "doesn't matter", "does not matter", "dont care", "don't care"))

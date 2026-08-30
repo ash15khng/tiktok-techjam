@@ -3,10 +3,10 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from shopping_copilot.config import MVPConfig
-from shopping_copilot.dialog.models import ActiveState
-from shopping_copilot.ranking.reranker import LightweightReranker
-from shopping_copilot.retrieval.models import CandidateEvidence
+from submission.src.config import MVPConfig
+from submission.src.dialog.models import ActiveState
+from submission.src.ranking.reranker import LightweightReranker
+from submission.src.retrieval.models import CandidateEvidence
 
 
 class FakeStore:
