@@ -73,15 +73,19 @@ flowchart TD
     C[respond: message + turn + top_k] --> D[Deterministic MessageInterpreter]
     B --> D
     D --> E[Immutable IntentFrame]
-    E --> F[StateReducer]
+    E --> S{Pre-retrieval semantic<br/>call justified?}
+    S -- compound or unresolved --> T[Strict function tool + local grounding]
+    T --> F
+    S -- simple turn --> F
+    F[StateReducer]
     F --> G[Current ActiveState]
     G --> H[RetrievalPlanner]
     H --> I[Five lexical candidate lists]
     I --> J[Weighted Reciprocal Rank Fusion]
     J --> K[RetrievalAssessment]
     J --> L[LightweightReranker]
-    K --> M{Semantic call justified?}
-    M -- yes and enabled --> N[Strict function-tool parse + local grounding]
+    K --> M{Retrieval-aware semantic<br/>call justified?}
+    M -- yes and not called earlier --> N[Strict function-tool parse + local grounding]
     N -->|accepted state delta| F
     M -- no --> O[Unseen-first ordering]
     L --> O
@@ -90,10 +94,11 @@ flowchart TD
     Q --> R[message + ask_attribute + Top 10 + usage]
 ```
 
-The optional semantic pass happens only after the first deterministic retrieval.
-It can add grounded search evidence, then trigger one reretrieval. It cannot
-return IDs, delete deterministic evidence, or make the response depend on the
-network.
+The optional semantic parser has two mutually exclusive gates per turn. A
+pre-retrieval gate handles compound corrections or unresolved language before
+state mutation. If it skips, a retrieval-aware gate can still react to unstable
+candidates. At most one provider request occurs per turn. It cannot return IDs,
+and any failure preserves the complete deterministic path.
 
 ## 4. Catalog ingestion and missing fields
 
@@ -134,13 +139,16 @@ state.
 Deterministic parsing order:
 
 1. detect correction/override language;
-2. detect explicit or contextual no-preference replies;
+2. detect one or more explicit/contextual no-preference fields and remove those
+   spans before positive parsing;
 3. extract a leading requested category;
 4. preserve organizer-style payload evidence;
 5. split user-authored comma/semicolon constraints conservatively;
 6. separate exclusions using source-aware negation rules;
-7. resolve explicit attribute cues and catalog-supported values; and
-8. use the previous question only for a bounded short/elliptical answer.
+7. resolve explicit attribute cues and catalog-supported values;
+8. use the previous question only for a bounded short/elliptical answer; and
+9. during an explicit color correction, remove a stale catalog-linked color from
+   a compact category phrase without splitting longer product phrases.
 
 All regular expressions are named module constants (`CATEGORY_RE`,
 `OVERRIDE_RE`, `CUSTOMER_EXCLUSION_RE`, and so on). Attribute value lists are not
@@ -163,12 +171,15 @@ only component that mutates `ActiveState`.
 State invariants:
 
 - add/set operations retain unique active values;
-- replace operations supersede the value for that attribute;
+- replace operations supersede only values for that same attribute;
 - `set_any` clears and suppresses the attribute;
 - exclusions remain separate from positive preferences;
 - a category-changing override clears incompatible preferences, slots, and
   exclusions;
-- a preference correction removes only the stale preference it replaces; and
+- multiple operations in one message are applied independently, so clearing
+  color cannot erase size, budget, or use case;
+- semantic query rewrites are stored separately from durable user preferences
+  and cleared when a correction could make them stale;
 - any override clears Recommendation Exposure because old rejection no longer
   has the same meaning.
 
@@ -282,23 +293,37 @@ The SoCLaaS adapter uses the Responses-compatible endpoint with a forced strict
 client-executed function tool. It is disabled unless all required environment
 values are present and `SHOPPING_COPILOT_LLM_ENABLED` is true.
 
-The retrieval-aware gate escalates only when deterministic parsing leaves a
-fallback/implicit-language gap and ranking stability is low, the category shape
-is ambiguous, or a substantive request has no category. Short contextual replies
-and exact top-product phrase evidence suppress calls.
+The pre-retrieval gate escalates compound corrections/clearings, unresolved
+substantive requests, and difficult fallback spans. When it skips, the
+retrieval-aware gate escalates only if candidate stability exposes an ambiguous
+category or difficult-language gap. Short contextual replies and exact
+top-product evidence suppress calls.
+
+The function schema exposes every competition field except `other` and four
+explicit operations: `add`, `replace`, `exclude`, and `set_any`. The request
+contains JSON-structured Active State, including the previous question and
+unrestricted fields. Rewrites must be standalone catalog queries containing only
+currently active positive evidence; vague pronouns and cleared constraints are
+forbidden.
 
 Local grounding rejects:
 
 - ASIN-shaped output;
-- unsupported material, color, size, brand, budget, or category slots;
+- unsupported attributes or operations;
 - unanchored rewrites and evidence spans;
-- negated semantic additions;
+- hard-field values absent from the quoted customer evidence;
+- positive additions containing negation, or exclusions without negation;
 - low-confidence or overlong hypotheses; and
 - duplicates of deterministic evidence.
 
-A process call cap, bounded successful-result cache, six-second timeout, input
-and output limits, non-secret diagnostics, and deterministic exception fallback
-contain cost and reliability risk. The provider remains off by default because a
+A process call cap, two-call per-session cap, bounded successful-result cache,
+six-second timeout, input/output limits, non-secret diagnostics, and
+deterministic exception fallback
+contain cost and reliability risk. The LLM supplies semantic query expansion;
+the existing bounded reranker scores products against those expanded terms. A
+separate neural candidate reranker is not enabled because it would add model
+memory and per-candidate latency without a validated gain. The provider remains
+off by default because a
 paired 50-session ablation spent tokens without improving a score.
 
 ## 12. Response contract and failure handling
@@ -322,8 +347,9 @@ failure.
 
 The runtime imports neither evaluator code nor labels. Development uses four
 scenario-stratified, exact-title-family-disjoint 40-session folds; a fifth
-40-session holdout remains sealed until configuration freeze. The independent
-14-case consumer-language suite uses targets outside the public 200.
+40-session release partition was held out until configuration freeze, then
+included in the full-public compatibility replay. The independent 14-case
+consumer-language suite uses targets outside the public 200.
 
 Canonical commands from the repository root:
 

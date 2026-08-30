@@ -21,15 +21,17 @@ reset(profile)
 
 respond(message)
     -> deterministic category/payload/correction/exclusion/ANY parsing
+    -> independent add/replace/exclude/set_any operations in compound turns
     -> explicit-or-contextual short reply resolution with provenance
     -> IntentFrame of typed SlotUpdates and preserved phrases
+    -> optional pre-retrieval semantic parse for compound/unresolved language
     -> StateReducer creates current ActiveState
     -> sigmoid focus score from current category/constraint evidence
     -> title/field BM25 + category relevance/popularity + constraint retrieval
     -> weighted Reciprocal Rank Fusion
     -> generator overlap and Top-10 stability assessment
     -> full-union lightweight reranking
-    -> optional retrieval-aware semantic escalation
+    -> optional retrieval-aware semantic escalation if preflight skipped
        -> strict function-tool interpretation and local grounding
        -> one reretrieval only when accepted evidence changes state
     -> unseen-first Recommendation Exposure control
@@ -53,7 +55,7 @@ respond(message)
 | Reranking | Full bounded union: RRF + IDF/phrase coverage + capped popularity + missing-neutral price range |
 | Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
 | Question selection | Top-50 coverage/Gini × catalog prior × session posterior, plus one broad recovery |
-| Optional semantics | Two-pass escalation + strict function tool + cap/cache + local grounding |
+| Optional semantics | Pre/post retrieval gates + all-field operation schema + process/session caps + cache + local grounding |
 
 ## Chosen technologies
 
@@ -77,6 +79,9 @@ Unimplemented alternatives are listed only in [`../TODO.md`](../TODO.md).
 - an Intent Override deactivates stale values before retrieval.
 - an Intent Override resets Recommendation Exposure because earlier rejection used a different need.
 - `ANY` clears and suppresses an attribute and prevents repeat questions.
+- `asked_attributes` prevents answerability from repeating a field within one
+  intent; a genuine category replacement resets that history.
+- LLM rewrites are separate search evidence, not durable customer facts.
 - ask-and-recommend preserves the current hit opportunity, so the main question is which attribute to ask.
 
 ## Implemented stages
@@ -105,8 +110,9 @@ Remaining work and alternative implementations are centralized in
 5. Buying, Browsing, Override, and Boundary regressions;
 6. latency, memory, tokens, cost, and fallback rate.
 
-The public-development protocol uses a sealed 20% holdout plus four
-scenario-stratified, target/title-family-disjoint working folds. See
+The public-development protocol held 20% out during numeric tuning and used four
+scenario-stratified, target/title-family-disjoint working folds. The held-out
+partition was later included in the final compatibility replay. See
 [evaluation-methodology.md](evaluation-methodology.md).
 
 Published starter: Hit Rate@10 `0.125`, MRR `0.068034`, MTTC `9.81`.

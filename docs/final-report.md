@@ -20,9 +20,10 @@ Complete-public development results from the unmodified evaluator:
 The current result was replayed after refactoring with zero session-level
 differences from the immediate parent commit. The historical peak predates the
 generalization work and is not the current submission result. Neither result
-estimates the 800 private sessions. New work uses a sealed 20% holdout
-and four scenario-stratified, target/title-family-disjoint working folds. Their
-locked 160-session score is `0.851762`; the holdout remains unopened.
+estimates the 800 private sessions. Numeric tuning used four scenario-stratified,
+target/title-family-disjoint working folds while a 20% release partition was
+held out. Their locked 160-session score is `0.851762`; the release partition
+was later included in the final compatibility replay without parameter tuning.
 
 Current full-public scenario breakdown:
 
@@ -44,11 +45,12 @@ Current full-public scenario breakdown:
 3. A contextual reply resolver grounds short answers using explicit current
    evidence first and the immediately preceding Clarification second. Each slot
    update records explicit, contextual, or fallback provenance.
-4. An optional billed semantic path adds anchored query rewrites and grounded
-   soft feature/style/use-case hints. It runs only after deterministic retrieval
-   shows a language/coverage concern. Eligibility uses parser fallback and
-   sentence structure rather than a fixed adjective list. A call cap, cache, strict function tool,
-   local validation, and deterministic fallback bound its risk.
+4. An optional billed semantic path handles difficult and compound language with
+   explicit `add`, `replace`, `exclude`, and `set_any` operations across the
+   competition fields. A pre-retrieval gate protects state before mutation; a
+   retrieval-aware gate remains available only when preflight skipped. A call
+   cap, cache, strict function tool, local validation, and deterministic fallback
+   bound its risk.
 5. Active State stores only currently valid session evidence; the anonymized
    profile is a capped soft prior.
 6. Five lexical rank lists cover field relevance, title relevance, focused
@@ -134,9 +136,9 @@ must be repeated on the organizer's machine.
   by the last Clarification without overriding explicit current evidence.
 - Attribute values are catalog-derived rather than copied into material, color,
   size, style, brand, or use-case regex lists. Missing values stay unknown.
-- Subjective needs can receive LLM rewrites, but only anchored rewrites and
-  grounded soft slots reach retrieval. Unsupported inferences are discarded and
-  the deterministic path remains complete.
+- Subjective needs can receive LLM rewrites, but only anchored standalone queries
+  and evidence-grounded field operations reach state. Unsupported inferences are
+  discarded and the deterministic path remains complete.
 
 ## Findings and trade-offs
 

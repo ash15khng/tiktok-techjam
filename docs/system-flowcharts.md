@@ -32,7 +32,10 @@ flowchart LR
     SessionStore --> Agent
 
     Agent --> Interpreter[MessageInterpreter]
-    Interpreter --> Reducer[StateReducer]
+    Interpreter --> Preflight{Semantic preflight}
+    Preflight --> Reducer[StateReducer]
+    Preflight -. compound or unresolved .-> Semantic[Optional semantic interpreter]
+    Semantic -. grounded operations .-> Reducer
     Reducer --> Active[Active State]
 
     Active --> Planner[RetrievalPlanner]
@@ -44,8 +47,7 @@ flowchart LR
     Fusion --> Reranker[LightweightReranker]
     Active --> Reranker
 
-    Assessment -. uncertain language .-> Semantic[Optional semantic translator]
-    Semantic -. grounded additions only .-> Reducer
+    Assessment -. uncertain and preflight skipped .-> Semantic
     Reducer -. state changed .-> Planner
 
     Reranker --> Exposure[Unseen-first exposure]
@@ -61,8 +63,10 @@ flowchart LR
     Fallback --> Guard
 ```
 
-The default path is offline and deterministic. The LLM is not a recommender: it
-is an optional translator used between the first retrieval and final decision.
+The default path is offline and deterministic. The LLM is a structured state
+interpreter and query translator, not a source of product IDs. It runs either
+before state mutation for compound/unresolved language or after first retrieval
+for instability, never both in one turn.
 Every successful path ends at `ResponseGuard`, so only valid frozen-catalog IDs
 and contract-safe fields leave the agent.
 
@@ -212,11 +216,15 @@ sequenceDiagram
     S-->>A: SessionState
     A->>I: parse_deterministic(message, last ask)
     I-->>A: IntentFrame
+    opt semantic preflight approved
+        A->>L: message + structured prior Active State
+        L-->>A: grounded field operations + standalone rewrites or safe no-op
+    end
     A->>R: apply(state, frame)
     A->>Q: plan, generate, fuse, assess, rerank
     Q-->>A: RetrievalAssessment + ranked union
 
-    opt semantics enabled and escalation approved
+    opt preflight skipped and retrieval-aware escalation approved
         A->>L: message + compact active context
         L-->>A: structured semantic hints or safe no-op
         A->>R: apply_semantic without advancing turn
@@ -235,9 +243,10 @@ sequenceDiagram
     Note over A,G: Any component exception uses field-weighted FTS,<br/>then passes through the same guard.
 ```
 
-The deterministic frame is applied before the first retrieval. A semantic frame
-can add only locally grounded evidence and does not increment `turn_count`. At
-most one semantic reretrieval occurs in a response.
+Compound-turn semantics enriches the frame before its single state reduction. If
+that gate skips, a post-retrieval semantic frame can apply locally grounded
+evidence without incrementing `turn_count`, followed by at most one reretrieval.
+The two paths are mutually exclusive.
 
 ## 5. Message interpretation
 
@@ -425,19 +434,18 @@ partitions.
 
 ```mermaid
 flowchart TD
-    A[Deterministic frame and first ranking] --> B{Semantic provider<br/>fully configured?}
+    A[Deterministic frame + prior state] --> B{Semantic provider<br/>fully configured?}
     B -->|no| Z[Keep deterministic result]
     B -->|yes| C{At least 6 terms?}
     C -->|no| Z
-    C -->|yes| D{Missing category?}
-    D -->|yes| H[Approve call]
-    D -->|no| E{Exact multi-term preference<br/>in top product?}
-    E -->|yes| Z
-    E -->|no| F{Ambiguous category and<br/>stability below 0.40?}
-    F -->|yes| H
-    F -->|no| G{Fallback or implicit language and<br/>stability below 0.12?}
+    C -->|yes| D{Compound change, missing category,<br/>or difficult fallback?}
+    D -->|yes: preflight| H[Approve one call before state mutation]
+    D -->|no| E[Run deterministic retrieval]
+    E --> F{Exact top evidence?}
+    F -->|yes| Z
+    F -->|no| G{Ambiguous/difficult language<br/>and low stability?}
     G -->|no| Z
-    G -->|yes| H
+    G -->|yes: postflight| H
 
     H --> I{Successful cache hit?}
     I -->|yes| M[Return cached hints<br/>with zero new tokens]
@@ -452,17 +460,18 @@ flowchart TD
     N --> O[Ground against current message and context]
     O --> P{Accepted evidence changed state?}
     P -->|no| Z
-    P -->|yes| Q[Apply soft feature, style, or use_case<br/>and anchored rewrites]
-    Q --> R[Reretrieve exactly once]
+    P -->|yes| Q[Apply grounded add/replace/exclude/set_any<br/>and standalone rewrites]
+    Q --> R[Retrieve once, or reretrieve once after postflight]
 ```
 
 Semantic output is untrusted until locally grounded. The grounder rejects ASINs,
-negated rewrites, unanchored text, overlong values, unsupported evidence spans,
-low-confidence hypotheses, and semantic attributes already determined by the
-rules. Structured hypotheses are limited to `feature`, `style`, and `use_case`.
+vague/negated rewrites, invalid field operations, hard values missing from their
+exact evidence spans, overlong values, low confidence, and conflicts with
+explicit deterministic evidence. All competition fields except `other` are
+permitted in semantic state operations.
 
-The process call cap defaults to 16, successful responses use a 256-entry LRU
-cache, and failures are not retried. The LLM path is off by default because live
+The process call cap defaults to 16, each session permits at most two attempts,
+successful responses use a 256-entry LRU cache, and failures are not retried. The LLM path is off by default because live
 tests have not yet improved a measured ranking. The forced function-tool request
 has mocked coverage but still requires one capped live compatibility test.
 
@@ -645,7 +654,8 @@ the sophistication of the answer, not invalidate the response.
    the most important correctness contract.
 3. Read retrieval planning before reranking so route weights and final feature
    weights are not confused.
-4. Treat the semantic diagram as an optional second pass, not the main pipeline.
+4. Treat semantics as an optional preflight or post-retrieval fallback, not the
+   main pipeline.
 5. Use clarification, guard, and evaluator diagrams to verify changes against the
    ten-turn and exact-ASIN objective.
 

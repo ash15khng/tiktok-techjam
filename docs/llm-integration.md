@@ -32,8 +32,9 @@ rejected; HTTP is allowed only for localhost development.
 The application loads the repository `.env` without another package. Existing
 OS environment variables take precedence, so deployment or terminal secrets
 cannot be silently replaced by file values. Only documented runtime keys are
-accepted from the file. The call cap is shared across the process; lower it for
-demos or development when a stricter spending ceiling is needed.
+accepted from the file. The environment call cap is shared across the process;
+runtime state also permits at most two semantic attempts per session. Lower the
+process cap for demos or development when a stricter spending ceiling is needed.
 
 `.env` is covered by `.gitignore`; `.env.example` contains placeholders only.
 Verify before every commit:
@@ -104,27 +105,33 @@ are not retried.
 
 ## Product behavior and fallback
 
-The model is considered only after deterministic parsing and first-pass
-retrieval. `SemanticEscalationPolicy` calls it for substantive messages with
-missing or malformed category evidence, or parser fallback / implicit outcome
-language plus unstable retrieval. It does not maintain a list of subjective
-adjectives: new catalog values stay in the catalog registry, and semantic
-eligibility comes from parse gaps and sentence structure. Exact multi-token evidence in the leading deterministic product
-suppresses a call. Short contextual answers remain deterministic.
+The model has two mutually exclusive opportunities per turn. Before state
+mutation, a preflight gate handles compound corrections/clearings, missing
+category evidence, and difficult fallback spans. If preflight skips, the existing
+retrieval-aware gate can call only for ambiguous or difficult language with weak
+candidate stability. At most one request is made per turn. Short contextual
+answers remain deterministic, and exact top-product evidence suppresses the
+post-retrieval call.
 
 An eligible example is:
 
 > I need something polished but comfortable for a humid outdoor wedding.
 
-It may return short query rewrites, subjective needs, and soft `feature`,
-`style`, or `use_case` hypotheses. Rewrites must share an anchor with the current
-message or Active State. Slot hypotheses require confidence of at least `0.55`
-and an exact evidence span. Deterministic evidence wins on conflict.
+The forced function schema permits `category`, `material`, `color`, `size`,
+`style`, `brand`, `budget`, `feature`, and `use_case`. Every proposed slot carries
+one explicit operation: `add`, `replace`, `exclude`, or `set_any`. The input is a
+JSON-structured Active State plus the current message, so unrelated constraints
+must persist across corrections. Rewrites must be concrete standalone catalog
+queries containing only active positive evidence. Slot hypotheses require
+confidence of at least `0.55` and an exact current-message evidence span;
+hard-field values must also occur in that evidence. Deterministic explicit
+evidence wins on conflict.
 
 Subjective summaries are retained for diagnostics but are not added directly to
-BM25. Model-produced identifiers, negated rewrites, unsupported attributes, and
-ungrounded hints are discarded. Numeric comparisons, exclusions, corrections,
-catalog identity, and contextual short answers remain deterministic.
+BM25. Model-produced identifiers, vague/negated rewrites, unsupported operations,
+and ungrounded hints are discarded. Accepted rewrites live in a separate bounded
+search-evidence field, not durable customer preferences, and are cleared by
+corrections that could make them stale.
 
 Timeouts, HTTP errors, incomplete responses, invalid JSON, or invalid fields
 become an empty semantic result during normal agent operation. Run the one-call
@@ -149,10 +156,9 @@ On 2026-08-29, three deliberate requests were attempted:
   seconds, reporting 343 input and 158 output tokens.
 
 The successful response produced two anchored rewrites. It also inferred
-category, material, and color without sufficient support; the retrieval
-grounder rejected those slots. The prompt was then narrowed to request only the
-three accepted soft attributes. No further live call and no paid public-set
-evaluation were run.
+category, material, and color without sufficient support, which local grounding
+rejected. The current schema exposes all competition fields but requires hard
+values to occur in an exact current-message evidence span.
 
 A historical no-network replay of all 200 public sessions found 13 eligible
 semantic calls and 12 unique message/context pairs. This estimates the former
@@ -170,6 +176,24 @@ curated ambiguity corpus demonstrates retrieval-relevant gains, then consider a
 gate threshold adjustment only through the working folds. The current gate
 already requires low deterministic retrieval stability. Provider pricing
 was not supplied, so monetary cost is not claimed.
+
+On 2026-08-30, one deliberately capped smoke command was attempted after the
+all-field operation schema was added. Local configuration reported the provider
+disabled or incomplete, so no HTTP request, tokens, or cost occurred.
+
+## Semantic matching boundary
+
+The LLM improves semantic matching through query expansion: language such as
+“walking on pillows” can become catalog terms such as “cushioned” or “memory
+foam.” Those terms enter the same five candidate generators and the bounded
+reranker’s IDF-coverage score. This is semantic assistance, but not a neural
+query-product cross-encoder.
+
+A cross-encoder or listwise LLM reranker is not in the default runtime.
+Cross-encoders jointly score each query-document pair after retrieval; adding one
+here would introduce model memory, installation footprint, and per-candidate
+latency. It remains adoption-gated until a target-disjoint test shows high
+candidate recall but weak MRR.
 
 ## Hard-language evaluation
 
@@ -191,9 +215,16 @@ were then capped at four attempts each with no retries:
 
 Completed responses still produced no locally usable hints. The likely causes
 are output-shape drift and an 8B model choosing empty arrays despite the prose
-request. The next adapter revision therefore forces a client-executed function
-tool with a strict schema and `minItems: 1` for rewrites. Mocked tests pass, but
-this request shape has not been live-tested; do not run another suite until one
-explicitly budgeted smoke call validates it.
+request. The adapter now forces a client-executed function tool with a strict
+operation schema while permitting zero rewrites when none is safe. Mocked tests
+pass. The latest capped smoke command found provider configuration
+disabled/incomplete and made no request, so this exact schema still needs one
+explicitly budgeted live compatibility call before any paid suite.
 
 The request shape follows the official [OpenAI Responses API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create), while the supported-field subset and gateway-state limitations come from the SoCLaaS documentation supplied to the team.
+
+## Design references
+
+- [ProductAgent (EMNLP Industry 2025)](https://aclanthology.org/2025.emnlp-industry.25/) supports structured conversational memory, candidate-aware clarification, and a closed retrieval loop.
+- [CONQRR](https://arxiv.org/abs/2112.08558) motivates rewriting context-dependent turns into standalone retrieval queries.
+- [Sentence Transformers: Retrieve and Re-Rank](https://www.sbert.net/examples/sentence_transformer/applications/retrieve_rerank/README.html) explains why semantic cross-encoders belong on a bounded shortlist rather than the complete catalog.

@@ -76,8 +76,9 @@ The current-code column was reproduced after the package refactor with zero
 session-level hit-turn/rank differences from its immediate parent commit. The
 historical peak predates the generalization changes and is not the current
 submission result. Neither column estimates private-set performance. New work
-uses four target/title-family-
-disjoint working folds and a sealed 20% holdout. See
+used four target/title-family-disjoint working folds while holding out a 20%
+release partition; that partition was included only in the final compatibility
+replay. See
 [evaluation-methodology.md](evaluation-methodology.md). The older 40-request
 audit measured 2.45 s startup and 265 ms p95 before the catalog registry;
 current feasibility measurements and caveats are in [findings.md](findings.md).
@@ -88,16 +89,19 @@ and first-hit turn. First-list ordering remains a tuning target.
 
 `DisabledSemanticParser` is the offline default. An opt-in SoCLaaS
 Responses-compatible adapter produces locally validated query rewrites,
-subjective needs, and soft slot hypotheses. It is escalated only after a
-deterministic retrieval-confidence check, cannot generate ASINs, and falls back
-to the already-computed deterministic result on failure.
+subjective needs, and structured field operations. Preflight handles compound or
+unresolved turns before state mutation; a retrieval-confidence gate remains only
+when preflight skipped. It cannot generate ASINs and falls back to deterministic
+behavior on failure.
 
-The provider is protected by a call cap and successful-result cache. A forced
-client-executed function tool now requires a rewrite; function arguments are
-still validated and grounded locally. Rewrites require a lexical anchor and soft
-slots require exact evidence, sufficient confidence, and an accepted attribute.
-Deterministic constraints always win. Retrieval runs a second time only when an
-accepted semantic delta changes Active State.
+The provider is protected by process and two-call per-session caps plus a
+successful-result cache. A forced
+client-executed function tool accepts zero to two standalone rewrites plus
+`add`, `replace`, `exclude`, or `set_any` field operations. Function arguments
+are validated and grounded locally. Rewrites require a lexical anchor; slots
+require exact evidence, sufficient confidence, and an accepted attribute.
+Deterministic explicit constraints win. Retrieval runs a second time only for an
+accepted post-retrieval semantic delta.
 
 The deterministic 14-case hard suite scores `0.857143` Hit Rate; an offline ideal
 rewrite replay scores `1.000`. Two four-call live text-output passes produced no

@@ -10,7 +10,7 @@ public-set overfitting, local work uses three separate gates.
 |---|---|---|
 | Frozen 50,000-product catalog | Runtime input and unsupervised schema/statistics source | Yes; every judged agent receives it |
 | 160 public development sessions | Repeated engineering and ablation | Yes |
-| 40 public sealed-holdout sessions | One final local check after configuration freeze | No, until release candidate |
+| 40 public release-check sessions | Held out during tuning, then included in the final compatibility replay | No, until release candidate |
 | 14 frozen hard-language cases | Product-language stress test; targets are outside the 200 public targets | Only through general fixes, never case/ASIN rules |
 | 800 organizer-private sessions | Final judging | Never |
 
@@ -78,10 +78,11 @@ working sessions:
 | Efficiency | 0.841875 |
 | TechnicalScore | 0.851762 |
 
-The 40-session holdout has not been evaluated during this re-engineering pass.
-The current generalized full-public compatibility replay is `0.849170`. The
-older `0.863324` result remains a historical pre-generalization peak, not the
-tuning target for these changes.
+The 40-session partition was not used during the re-engineering/tuning pass. It
+has since been included in the final full-public compatibility replay, so it is
+no longer described as unseen. No parameter was selected from its results. The
+generalized full-public score is `0.849170`; the older `0.863324` remains a
+historical pre-generalization peak, not the tuning target for these changes.
 
 ## Acceptance gates
 

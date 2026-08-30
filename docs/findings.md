@@ -110,6 +110,38 @@ zero score and session-rank delta. A forced strict function-tool response is now
 implemented and mocked, but has not been live-validated. Provider price remains
 unknown, so currency cost is not reported.
 
+### Final compound-turn and semantic-state pass
+
+The following natural conversation exposed three deterministic defects:
+
+```text
+im looking for red shoes
+size 10
+no budget, actually make the shoes black
+for casual wear, actually i want it dont care about colour too
+```
+
+Previously, `no budget` became an exclusion, the last message became a false
+category, and size/casual-wear evidence was lost. The retained behavior now ends
+with category `shoes`, size `size 10`, use case `casual wear`, and both budget and
+color marked unrestricted. Red and black are absent from final query terms. This
+trajectory is covered end to end.
+
+An initial general catalog-modifier splitter repaired that example but reduced
+the independent hard suite from HR `0.857143`, MRR `0.7375` to HR `0.785714`,
+MRR `0.608929`. It over-segmented long natural product phrases. Restricting this
+behavior to correction time—removing a stale catalog-linked color only from a
+compact category phrase—restored the hard suite exactly to HR `0.857143`, MRR
+`0.7375`, MTTC `1.357143`. The full public LLM-off evaluation also remained
+exactly HR `0.99`, MRR `0.617232`, MTTC `2.55`, and TechnicalScore `0.84917`.
+
+The semantic contract now receives structured Active State and supports all
+competition fields with `add`, `replace`, `exclude`, and `set_any`. A preflight
+gate handles compound/unresolved turns before mutation; the retrieval-aware gate
+is used only if preflight skipped. Rewrites are isolated from durable customer
+facts, so later corrections can invalidate them safely. One capped smoke command
+found the local provider disabled/incomplete and made no HTTP request.
+
 ## What worked
 
 - Preserving raw disclosed constraints made long catalog feature text searchable.
@@ -238,11 +270,12 @@ Beta-style posterior for the remaining questions, and `reset()` clears it. The
 one-time `other` recovery remains because catalog attributes do not capture every
 customer priority.
 
-The public set is now split into a sealed 40-session holdout and four 40-session
+The public set was split into a 40-session release partition and four 40-session
 working folds. Exact normalized-title families cannot cross partitions and every
-partition is scenario-stratified. The current 160-session working-fold checkpoint
-is Hit Rate `0.9875`, MRR `0.632125`, MTTC `2.58125`, and TechnicalScore
-`0.851762`. The sealed holdout was not opened in this pass.
+partition is scenario-stratified. The 160-session working-fold checkpoint is Hit
+Rate `0.9875`, MRR `0.632125`, MTTC `2.58125`, and TechnicalScore `0.851762`.
+The release partition was not opened during this tuning pass; it was later
+included in the final full-public compatibility replay.
 
 ### Retrieval and ranking ablation
 
@@ -292,6 +325,7 @@ clarification lookup.
 
 The public set has only 200 sessions. Current numeric weights are engineering
 guesses; repeated working-fold choices can still overfit despite target-family
-grouping, which is why the 20% holdout stays sealed until configuration freeze.
-No private-set performance, LLM score gain, production user impact, provider
-cost, or external API reliability is claimed.
+grouping. The 20% release partition was held out until configuration freeze and
+has since been included in the final compatibility replay, so only the organizer's
+800 sessions are truly unseen. No private-set performance, LLM score gain,
+production user impact, provider cost, or external API reliability is claimed.

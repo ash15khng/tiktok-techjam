@@ -19,13 +19,13 @@
    corrections. Keep all targets outside the public 200.
 9. Record pre/post candidate ranks and accepted hints per semantic call without
    storing credentials or raw provider responses.
-10. Grow the current 77-test suite to at least 100 parser utterances, especially
+10. Grow the current 86-test suite to at least 100 parser utterances, especially
    conjunction scope, short sizes, brand aliases, typos, and contextual replies
    that explicitly switch attributes.
 11. Reduce catalog-registry cold start and rerun latency/memory on the judging
    environment. Do not reduce candidate depth without a recall ablation.
-12. Freeze configuration, open the 40-session holdout once, then perform one
-   final complete-public compatibility replay. Do not tune after holdout review.
+12. Rehearse the release from a clean checkout and verify catalog checksum,
+   environment setup, startup time, evaluator output, and credential hygiene.
 13. Add the five members' contribution statements and rehearse the prepared
     multi-turn demo before submission.
 
