@@ -149,6 +149,10 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual(state.turn_count, 1)
         self.assertNotIn("black", state.active.query_terms())
         self.assertEqual(len(state.responses_by_turn), 1)
+        self.assertEqual(
+            self.agent._agent.diagnostics()["runtime"]["cached_turn_responses"],
+            1,
+        )
 
     def test_component_failure_reuses_last_successful_recommendations(self) -> None:
         first = self.agent.respond("session", "I'm looking for shoes.", 1, 2)
@@ -165,6 +169,26 @@ class AgentIntegrationTest(unittest.TestCase):
             expected,
         )
         self.assertEqual(recovered["ask_attribute"], None)
+        self.assertEqual(
+            self.agent._agent.diagnostics()["runtime"]["fallback_responses"],
+            1,
+        )
+
+    def test_late_turn_returns_latest_response_without_replaying_state(self) -> None:
+        first = self.agent.respond("session", "I'm looking for shoes.", 1, 10)
+        second = self.agent.respond("session", "Prefer leather.", 2, 10)
+        state = self.agent._agent.sessions.get("session")
+
+        late = self.agent.respond("session", "This must not be interpreted.", 0, 10)
+
+        self.assertNotEqual(first, second)
+        self.assertEqual(late, second)
+        self.assertEqual(state.turn_count, 2)
+        self.assertNotIn("interpreted", state.active.query_terms())
+        self.assertEqual(
+            self.agent._agent.diagnostics()["runtime"]["out_of_order_responses"],
+            1,
+        )
 
     def test_real_user_budget_and_exclusion_affect_the_end_to_end_list(self) -> None:
         response = self.agent.respond(

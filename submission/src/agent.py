@@ -70,6 +70,13 @@ class ShoppingAgent:
         self.question_policy = QuestionPolicy(self.catalog, self.config)
         self.semantic_escalation = SemanticEscalationPolicy(self.config)
         self.guard = ResponseGuard(self.catalog.valid_ids, self.catalog.popular)
+        # Aggregate operational counters only. They intentionally contain no
+        # customer messages, profile values, credentials, or product identifiers.
+        self._runtime_metrics = {
+            "cached_turn_responses": 0,
+            "out_of_order_responses": 0,
+            "fallback_responses": 0,
+        }
 
     def reset(self, session_id: str, user_profile: dict) -> None:
         """Create fresh mutable state for session."""
@@ -82,11 +89,13 @@ class ShoppingAgent:
         requested_turn = int(turn)
         cached = state.responses_by_turn.get(requested_turn)
         if cached is not None:
+            self._runtime_metrics["cached_turn_responses"] += 1
             return deepcopy(cached)
         if requested_turn <= state.last_completed_turn:
             # A late out-of-order request must not replay state transitions.
             latest = state.responses_by_turn.get(state.last_completed_turn)
             if latest is not None:
+                self._runtime_metrics["out_of_order_responses"] += 1
                 return deepcopy(latest)
         try:
             # Parse the turn into an immutable delta before mutating session state.
@@ -176,6 +185,7 @@ class ShoppingAgent:
             )
             return self._remember_response(state, requested_turn, response)
         except Exception:
+            self._runtime_metrics["fallback_responses"] += 1
             # Preserve the last successful list before attempting fresh FTS.
             # A nested fallback guard keeps even catalog-search failures safe.
             fallback_ids = state.last_recommendations
@@ -214,13 +224,27 @@ class ShoppingAgent:
         )
         return deepcopy(snapshot)
 
-    def diagnostics(self) -> dict[str, dict[str, int | float]]:
-        """Return credential-free semantic gate/provider counters."""
+    def diagnostics(self) -> dict[str, object]:
+        """Return aggregate, credential-free runtime diagnostics.
+
+        Output is safe to attach to local evaluation reports: it contains only
+        counters and configuration flags, never conversation or profile data.
+        """
 
         provider_stats = getattr(self.semantic_parser, "stats", None)
         return {
             "semantic_escalation": self.semantic_escalation.stats(),
             "semantic_provider": provider_stats() if callable(provider_stats) else {},
+            "runtime": dict(self._runtime_metrics),
+            "final_ordering": {
+                "membership_preserving": self.config.membership_preserving_ordering,
+                "popularity_weight": self.config.ordering_popularity_weight,
+                "profile_weight": self.config.ordering_profile_weight,
+                "phrase_rarity_weight": self.config.phrase_rarity_order_weight,
+                "popularity_during_override": (
+                    self.config.ordering_popularity_during_override
+                ),
+            },
         }
 
     def _retrieve_and_rank(
