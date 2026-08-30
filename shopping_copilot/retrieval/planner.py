@@ -18,9 +18,9 @@ EXPLORATORY_WEIGHTS: dict[str, float] = {
 }
 
 DEFAULT_LIMITS: dict[str, int] = {
-    "title_fts": 100,
-    "field_fts": 200,
-    "attribute_posting": 150,
+    "title_fts": 300,
+    "field_fts": 500,
+    "attribute_posting": 300,
 }
 
 

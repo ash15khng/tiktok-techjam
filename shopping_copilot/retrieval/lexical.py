@@ -9,8 +9,33 @@ from shopping_copilot.retrieval.models import RetrievalRequest
 TOKEN_RE = re.compile(r"[\w\d]+", re.UNICODE)
 
 
+CONVERSATIONAL_STOPWORDS = frozenset([
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are",
+    "aren't", "as", "at", "be", "because", "been", "before", "being", "below", "between", "both",
+    "but", "by", "can't", "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't",
+    "doing", "don't", "dont", "down", "during", "each", "few", "for", "from", "further", "had",
+    "hadn't", "has", "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "he's", "her",
+    "here", "here's", "hers", "herself", "him", "himself", "his", "how", "how's", "i", "i'd",
+    "i'll", "i'm", "i've", "if", "in", "into", "is", "isn't", "it", "it's", "its", "itself", "let's",
+    "me", "more", "most", "mustn't", "my", "myself", "no", "nor", "not", "of", "off", "on", "once",
+    "only", "or", "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same", "shan't",
+    "she", "she'd", "she'll", "she's", "should", "shouldn't", "so", "some", "such", "than", "that",
+    "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these",
+    "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "to", "too",
+    "under", "until", "up", "very", "was", "wasn't", "we", "we'd", "we'll", "we're", "we've", "were",
+    "weren't", "what", "what's", "when", "when's", "where", "where's", "which", "while", "who",
+    "who's", "whom", "why", "why's", "with", "won't", "would", "wouldn't", "you", "you'd", "you'll",
+    "you're", "you've", "your", "yours", "yourself", "yourselves",
+    # Conversational domain fillers & simulator meta-tokens
+    "looking", "look", "search", "searching", "find", "finding", "want", "wanted", "wants", "need",
+    "needed", "needs", "prefer", "preferred", "preference", "preferences", "options", "quite", "right",
+    "yet", "specific", "attribute", "attributes", "additional", "exploring", "explore", "judgment",
+    "matters", "matter", "something", "anything", "please", "item", "items", "product", "products",
+])
+
+
 def _extract_query_terms(request: RetrievalRequest) -> list[str]:
-    """Aggregates all meaningful query terms from the request without duplication."""
+    """Aggregates all meaningful query terms from the request without duplication and without stopwords."""
     terms: list[str] = []
     # 1. Category
     if request.category:
@@ -28,8 +53,11 @@ def _extract_query_terms(request: RetrievalRequest) -> list[str]:
     for pref in request.profile_preferences:
         terms.extend(TOKEN_RE.findall(pref))
 
-    # Normalize and deduplicate
-    cleaned = [t.lower() for t in terms if len(t) > 1]
+    # Normalize, filter stopwords, and deduplicate
+    cleaned = [
+        t.lower() for t in terms
+        if len(t) > 1 and t.lower() not in CONVERSATIONAL_STOPWORDS and not (t.isdigit() and len(t) < 3)
+    ]
     return list(dict.fromkeys(cleaned))
 
 
