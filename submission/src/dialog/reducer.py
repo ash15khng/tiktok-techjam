@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import re
 
+from submission.src.catalog.attributes import (
+    AttributeValueResolver,
+    EmptyAttributeResolver,
+)
 from submission.src.dialog.models import SessionState
 from submission.src.understanding.models import IntentFrame
 
@@ -23,6 +27,9 @@ def _append_unique(values: list[str], additions: tuple[str, ...]) -> None:
 class StateReducer:
     """The only component allowed to mutate Active State."""
 
+    def __init__(self, attribute_resolver: AttributeValueResolver | None = None) -> None:
+        self.attribute_resolver = attribute_resolver or EmptyAttributeResolver()
+
     def apply(self, state: SessionState, frame: IntentFrame) -> SessionState:
         """Apply one deterministic Intent Frame and advance session turn state."""
 
@@ -34,7 +41,8 @@ class StateReducer:
         if frame.override:
             # clears past recommendation
             state.recommendation_exposure.clear()
-            if frame.category_phrases: # category override clears all previous preferences and exclusions
+            if frame.category_phrases:
+                # A true category override invalidates all old product evidence.
                 active.preference_phrases.clear()
                 active.exclusions.clear()
                 active.slot_values.clear()
@@ -60,11 +68,21 @@ class StateReducer:
         )
         if frame.query_rewrites:
             active.search_rewrites[:] = list(dict.fromkeys(frame.query_rewrites))
-        _append_unique(active.exclusions, frame.exclusions) # exclusion items
+        _append_unique(active.exclusions, frame.exclusions)
 
         for update in frame.slot_updates:
             attribute = update.attribute.value
-            if update.operation == "set_any": # no preference for this attribute, e.g. "I don't care about color"
+            if update.operation == "suppress":
+                # Retain the disclosed phrase for retrieval, but remove the
+                # typed slot so the decline cannot add budget/range scoring or
+                # masquerade as a newly confirmed structured answer.
+                active.slot_values.pop(attribute, None)
+                active.suppressed_attributes.add(attribute)
+                continue
+            if attribute == "color" and update.operation == "replace":
+                self._remove_embedded_colors(active.category_phrases)
+            if update.operation == "set_any":
+                # "I don't care about color" clears color and suppresses repeats.
                 stale_values = active.slot_values.pop(attribute, [])
                 active.preference_phrases[:] = [
                     value for value in active.preference_phrases if value not in stale_values
@@ -89,6 +107,26 @@ class StateReducer:
         state.last_feedback_negative = frame.negative_feedback
         return state
 
+    def _remove_embedded_colors(self, categories: list[str]) -> None:
+        """Remove stale color adjectives only when color is explicitly replaced."""
+
+        revised: list[str] = []
+        for category in categories:
+            value = category
+            if len(category.split()) <= 2:
+                for attribute, phrase in self.attribute_resolver.matched_values(category):
+                    if attribute != "color":
+                        continue
+                    value = re.sub(
+                        rf"\b{re.escape(phrase)}\b",
+                        " ",
+                        value,
+                        flags=re.IGNORECASE,
+                    )
+            cleaned = " ".join(value.split()).strip(" -;,.")
+            revised.append(cleaned or category)
+        categories[:] = list(dict.fromkeys(revised))
+
     @staticmethod
     def _record_clarification_outcome(state: SessionState, frame: IntentFrame) -> None:
         attribute = state.last_ask_attribute
@@ -99,7 +137,7 @@ class StateReducer:
             for update in frame.slot_updates
             if update.attribute.value == attribute
         )
-        if any(update.operation == "set_any" for update in updates):
+        if any(update.operation in {"set_any", "suppress"} for update in updates):
             state.clarification_outcomes[attribute] = "declined"
         elif any(update.operation in {"add", "replace"} and update.value for update in updates):
             state.clarification_outcomes[attribute] = "answered"
@@ -107,7 +145,7 @@ class StateReducer:
             state.clarification_outcomes[attribute] = "redirected"
 
     def apply_semantic(self, state: SessionState, frame: IntentFrame) -> bool:
-        """Apply only grounded semantic additions without advancing the turn."""
+        """Apply grounded semantic operations without advancing the turn."""
 
         active = state.active
         previous_rewrites = tuple(active.search_rewrites)
@@ -123,7 +161,11 @@ class StateReducer:
                 active.preference_phrases[:] = [
                     value for value in active.preference_phrases if value not in stale_values
                 ]
-                changed = changed or bool(stale_values) or attribute not in active.suppressed_attributes
+                changed = (
+                    changed
+                    or bool(stale_values)
+                    or attribute not in active.suppressed_attributes
+                )
                 active.suppressed_attributes.add(attribute)
                 continue
             if update.operation == "exclude":

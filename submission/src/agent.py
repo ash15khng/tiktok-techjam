@@ -2,7 +2,8 @@
 Inputs:
     As per competition defined in submission_rules.md:
     - Agent(catalog_path: str | Path = "data/catalog.jsonl") -> None:
-        - Note competition specification does not have a catalog_path argument, so we provide a default path to the catalog file.
+        - The competition contract omits ``catalog_path``; this implementation
+          supplies the frozen catalog's default location.
     - reset(self, session_id: str, user_profile: dict) -> None:
     - respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
 
@@ -10,7 +11,7 @@ Outputs:
     respond():
         dict {
             "message": user facing message,
-            "ask_attribute": AnyOf["category", "material", "color", "size", "style", "brand", "budget", "feature", "use_case", "other"],
+            "ask_attribute": one permitted competition attribute or null,
             "recommendations": [{"parent_asin": "B000..."}] [up to 10],
             "usage": {"prompt_tokens": int, "completion_tokens": int} (nullable if no usage)
         }
@@ -59,7 +60,7 @@ class ShoppingAgent:
             semantic_max_rewrite_terms=self.config.semantic_max_rewrite_terms,
             attribute_resolver=self.catalog.attributes,
         )
-        self.reducer = StateReducer()
+        self.reducer = StateReducer(self.catalog.attributes)
         self.planner = RetrievalPlanner(self.config)
         self.retriever = LexicalRetriever(self.catalog, self.config)
         self.reranker = LightweightReranker(self.catalog, self.config)
@@ -76,18 +77,23 @@ class ShoppingAgent:
 
         state = self.sessions.get(session_id)
         try:
-            # parse user message to obtain attribute phrases, preference phrases, exclusions, intent overrides, negative feedback, or no preference answers
+            # Parse the turn into an immutable delta before mutating session state.
             frame = self.interpreter.parse_deterministic(
                 user_message,
                 last_ask_attribute=state.last_ask_attribute,
             )
             semantic_called = False
-            if not isinstance(self.semantic_parser, DisabledSemanticParser):
+            semantic_available = (
+                not isinstance(self.semantic_parser, DisabledSemanticParser)
+                and state.semantic_call_count < self.config.semantic_max_calls_per_session
+            )
+            if semantic_available:
                 preflight = self.semantic_escalation.decide_before_retrieval(
                     frame,
                     state.active,
                 )
                 if preflight.should_call:
+                    state.semantic_call_count += 1
                     frame = self.interpreter.enrich_with_semantics(
                         frame,
                         context=state.active.context_snapshot(
@@ -99,19 +105,17 @@ class ShoppingAgent:
                     self.semantic_escalation.record_outcome(
                         applied=bool(frame.query_rewrites or frame.semantic_hypotheses),
                     )
-            self.reducer.apply(state, frame) # update session state
-            assessment, ranked = self._retrieve_and_rank(state) # get ranked candidates
-            if (
-                not semantic_called
-                and not isinstance(self.semantic_parser, DisabledSemanticParser)
-            ):
-                decision = self.semantic_escalation.decide( # decide if llm is needed
+            self.reducer.apply(state, frame)
+            assessment, ranked = self._retrieve_and_rank(state)
+            if not semantic_called and semantic_available:
+                decision = self.semantic_escalation.decide(
                     frame,
                     state.active,
                     assessment,
                     top_exact_preference_match=self._top_exact_preference_match(state, ranked),
                 )
                 if decision.should_call:
+                    state.semantic_call_count += 1
                     frame = self.interpreter.enrich_with_semantics(
                         frame,
                         context=state.active.context_snapshot(
@@ -122,8 +126,9 @@ class ShoppingAgent:
                     applied = self.reducer.apply_semantic(state, frame)
                     self.semantic_escalation.record_outcome(applied=applied)
                     if applied:
-                        assessment, ranked = self._retrieve_and_rank(state) # reank again if llm used
-            ranked = unseen_first(ranked, state.recommendation_exposure) # reorder to prioritize unseen recommendations
+                        # Rerank once because semantic evidence changed Active State.
+                        assessment, ranked = self._retrieve_and_rank(state)
+            ranked = unseen_first(ranked, state.recommendation_exposure)
             question = self.question_policy.choose(state, ranked, assessment, turn)
             recommendations = tuple(item.parent_asin for item in ranked)
             message = explain(state.active)
@@ -173,15 +178,19 @@ class ShoppingAgent:
         self,
         state: SessionState,
     ) -> tuple[RetrievalAssessment, list[CandidateEvidence]]:
-        plan = self.planner.plan(state.active) # get route weights
-        generated = self.retriever.retrieve(state.active, plan) # get all 5 route candidate lists
-        fused = reciprocal_rank_fusion(generated, plan.generator_weights, k=self.config.rrf_k) # weighted rff merge
+        plan = self.planner.plan(state.active)
+        generated = self.retriever.retrieve(state.active, plan)
+        fused = reciprocal_rank_fusion(
+            generated,
+            plan.generator_weights,
+            k=self.config.rrf_k,
+        )
         assessment = assess_results(
             generated,
             fused,
             overlap_depth=self.config.assessment_overlap_depth,
             stability_scale=self.config.assessment_stability_scale,
-        ) # assess how much the 5 route candidate lists agree with each other
+        )
         ranked = self.reranker.rank(fused, state.active, state.customer_profile)
         return assessment, ranked
 

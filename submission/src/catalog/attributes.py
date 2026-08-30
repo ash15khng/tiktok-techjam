@@ -278,9 +278,10 @@ class CatalogAttributeRegistry:
     def matched_values(self, text: str) -> tuple[tuple[str, str], ...]:
         """Link explicit words to catalog-derived values without a hand-built lexicon.
 
-        This supports phrases such as ``red shoes`` where the same noun phrase
-        carries both a category and a modifier. Longest non-overlapping catalog
-        values win; stable attribute ordering resolves ambiguous metadata.
+        The state reducer uses this during targeted corrections, such as
+        replacing ``red`` in ``red shoes`` without splitting arbitrary product
+        phrases. Longest non-overlapping catalog values win; stable attribute
+        ordering resolves ambiguous metadata.
         """
 
         terms = tokenize(normalize_text(text), drop_stopwords=False)

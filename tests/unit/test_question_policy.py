@@ -9,6 +9,36 @@ from submission.src.retrieval.models import RetrievalAssessment
 
 
 class QuestionPolicyTest(unittest.TestCase):
+    def test_answerability_cannot_repeat_an_already_asked_attribute(self) -> None:
+        class Attributes:
+            @staticmethod
+            def representative_value(parent_asin: str, attribute: str) -> str | None:
+                values = {"A": "red", "B": "blue"}
+                return values.get(parent_asin) if attribute == "color" else None
+
+            @staticmethod
+            def baseline_answerability(attribute: str) -> float:
+                return 1.0
+
+        class Store:
+            attributes = Attributes()
+
+        active = ActiveState(asked_attributes=["color"])
+        state = SessionState("session", {}, active=active)
+        candidates = [
+            type("Candidate", (), {"parent_asin": "A"})(),
+            type("Candidate", (), {"parent_asin": "B"})(),
+        ]
+
+        decision = QuestionPolicy(Store(), AgentConfig()).choose(
+            state,
+            candidates,
+            RetrievalAssessment(2, 0.0, 0.0),
+            turn=2,
+        )
+
+        self.assertNotEqual(decision.ask_attribute, "color")
+
     def test_unanswered_specific_question_uses_one_broad_recovery(self) -> None:
         active = ActiveState(
             suppressed_attributes={"feature"},

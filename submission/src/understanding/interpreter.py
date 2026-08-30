@@ -31,7 +31,7 @@ NO_PREFERENCE_RE = re.compile(
     r"preference\s+for|"
     r"(?:don.?t|do\s+not)\s+care(?:\s+about)?|"
     r"no\s+preference\s+for|no"
-    r")\s+(color|colour|material|size|style|brand|budget|feature|use[_\s-]?case)\b"
+    r")\s+(category|color|colour|material|size|style|brand|budget|feature|use[_\s-]?case)\b"
     r"(?:\s+(?:either|too))?",
     re.IGNORECASE,
 )
@@ -74,8 +74,10 @@ PREFERENCE_PREFIX_RE = re.compile(
 TRAILING_INSTEAD_RE = re.compile(r"\s+instead$", re.IGNORECASE)
 CUSTOMER_CLAUSE_SEPARATOR_RE = re.compile(r"\s*[,;]\s*")
 CATEGORY_PRONOUN_RE = re.compile(r"^(?:it|them|this|that|those|these)\b", re.IGNORECASE)
+AMBIGUOUS_CATEGORY_RE = re.compile(r"^(?:something|anything|an?\s+item|to\s+)\b", re.IGNORECASE)
 DISCOURSE_ONLY_RE = re.compile(
-    r"^(?:actually\s+)?(?:i\s+)?(?:want|need|prefer)(?:\s+it|\s+that)?$",
+    r"^(?:i|actually|(?:actually\s+)?(?:i\s+)?"
+    r"(?:want|need|prefer)(?:\s+it|\s+that)?)$",
     re.IGNORECASE,
 )
 USE_CASE_PREFIX_RE = re.compile(r"^(?:for|to\s+wear\s+for)\s+", re.IGNORECASE)
@@ -110,14 +112,6 @@ def _attribute_name(value: str) -> Attribute:
     normalized = normalize_text(value).replace("_", " ").replace("-", " ")
     canonical = ATTRIBUTE_ALIASES.get(normalized, normalized.replace(" ", "_"))
     return Attribute(canonical)
-
-
-def _remove_linked_modifier(category: str, modifier: str) -> str:
-    """Remove one catalog-linked modifier while retaining the product noun."""
-
-    pattern = re.compile(rf"\b{re.escape(modifier)}\b", re.IGNORECASE)
-    reduced = _clean_phrase(pattern.sub(" ", category))
-    return reduced or category
 
 
 def _split_customer_tail(value: str) -> tuple[str, ...]:
@@ -181,7 +175,8 @@ class MessageInterpreter:
 
         if no_preference_match:
             pass
-        elif CONTEXTUAL_NO_PREFERENCE_RE.search(lowered): # bare decline, saying they dont care, assumed to be the last asked attribute
+        elif CONTEXTUAL_NO_PREFERENCE_RE.search(lowered):
+            # A bare decline applies only to the immediately preceding question.
             try:
                 no_preference = (
                     Attribute(last_ask_attribute)
@@ -200,8 +195,11 @@ class MessageInterpreter:
         # keeps "no budget" from becoming a product exclusion and prevents a
         # trailing "don't care about colour" from becoming a false category.
         parseable_raw = NO_PREFERENCE_RE.sub(" ", raw)
+        if no_preference and not no_preference_match:
+            parseable_raw = ""
 
-        categories: list[str] = [] # finds category phrases in the message, e.g. "looking for running shoes" -> "running shoes"
+        # Example: "looking for running shoes" -> "running shoes".
+        categories: list[str] = []
         category_match = CATEGORY_RE.search(parseable_raw)
         if category_match:
             category = _clean_phrase(category_match.group(1))
@@ -214,7 +212,8 @@ class MessageInterpreter:
             else:
                 category_match = None
 
-        preferences: list[str] = [] # finds preference phrases in the message, e.g. "I want red shoes" -> "red shoes"
+        # Example: "I want red shoes" retains "red shoes" as search evidence.
+        preferences: list[str] = []
         catalog_style_tail = False
         payload_match = PAYLOAD_RE.search(parseable_raw)
         if payload_match:
@@ -286,21 +285,16 @@ class MessageInterpreter:
             )
             for value in exclusions
         ]
-        matched_values = getattr(self.attribute_resolver, "matched_values", None)
-        category_links: list[tuple[str, str]] = []
-        resolved_categories: list[str] = []
-        for category in categories:
-            reduced_category = category
-            if callable(matched_values):
-                for attribute_name, value in matched_values(category):
-                    if attribute_name == "category":
-                        continue
-                    category_links.append((attribute_name, value))
-                    reduced_category = _remove_linked_modifier(reduced_category, value)
-            resolved_categories.append(reduced_category)
+        resolved_categories = list(categories)
         preference_values: list[str] = []
         slot_updates: list[SlotUpdate] = [
-            SlotUpdate(Attribute.CATEGORY, "replace" if override else "set", value, value)
+            SlotUpdate(
+                Attribute.CATEGORY,
+                "replace" if override else "set",
+                value,
+                value,
+                "fallback" if AMBIGUOUS_CATEGORY_RE.match(value) else "explicit",
+            )
             for value in resolved_categories
         ]
         for value in explicit_use_cases:
@@ -312,25 +306,6 @@ class MessageInterpreter:
                     value,
                     value,
                     "explicit",
-                )
-            )
-        # A catalog noun phrase can also carry explicit modifiers. Link those
-        # modifiers independently so a later correction can replace only color
-        # in "red shoes" without erasing size, budget, or use-case state.
-        for attribute_name, value in category_links:
-            try:
-                attribute = Attribute(attribute_name)
-            except ValueError:
-                continue
-            if value not in preference_values:
-                preference_values.append(value)
-            slot_updates.append(
-                SlotUpdate(
-                    attribute,
-                    "replace" if override else "add",
-                    value,
-                    value,
-                    "catalog_linked",
                 )
             )
         for raw_value, resolved in resolved_preferences:
@@ -368,7 +343,13 @@ class MessageInterpreter:
             )
         for declined_attribute in no_preferences:
             source = "explicit" if no_preference_match else "contextual"
-            slot_updates.append(SlotUpdate(declined_attribute, "set_any", "", raw, source))
+            operation = (
+                "suppress"
+                if no_preference_match
+                and "additional" in normalize_text(no_preference_match.group(0))
+                else "set_any"
+            )
+            slot_updates.append(SlotUpdate(declined_attribute, operation, "", raw, source))
 
         dialogue_acts = ["inform"]
         if override:
@@ -410,12 +391,30 @@ class MessageInterpreter:
             min_confidence=self.semantic_min_confidence,
             max_rewrite_terms=self.semantic_max_rewrite_terms,
         )
+        replace_fallback_category = bool(grounded_semantic.category_phrases) and any(
+            update.attribute is Attribute.CATEGORY and update.source == "fallback"
+            for update in frame.slot_updates
+        )
+        deterministic_updates = tuple(
+            update
+            for update in frame.slot_updates
+            if not (
+                replace_fallback_category
+                and update.attribute is Attribute.CATEGORY
+                and update.source == "fallback"
+            )
+        )
+        categories = (
+            grounded_semantic.category_phrases
+            if replace_fallback_category
+            else tuple(
+                dict.fromkeys((*frame.category_phrases, *grounded_semantic.category_phrases))
+            )
+        )
         return replace(
             frame,
-            slot_updates=(*frame.slot_updates, *grounded_semantic.slot_updates),
-            category_phrases=tuple(
-                dict.fromkeys((*frame.category_phrases, *grounded_semantic.category_phrases))
-            ),
+            slot_updates=(*deterministic_updates, *grounded_semantic.slot_updates),
+            category_phrases=categories,
             preference_phrases=tuple(
                 dict.fromkeys((*frame.preference_phrases, *grounded_semantic.preference_phrases))
             ),

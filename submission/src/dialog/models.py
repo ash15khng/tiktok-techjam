@@ -13,13 +13,13 @@ from submission.src.catalog.normalization import tokenize
 class ActiveState:
     """Best guess of the user's intent based on the session's evidence so far."""
 
-    category_phrases: list[str] = field(default_factory=list) # e.g. ["running shoes", "sneakers"]
-    preference_phrases: list[str] = field(default_factory=list) # e.g. ["red", "Nike", "size 10"]
-    exclusions: list[str] = field(default_factory=list) # e.g. ["no leather", "not black"]
-    slot_values: dict[str, list[str]] = field(default_factory=dict) # e.g. {"color": ["red", "blue"], "size": ["10"]}
-    search_rewrites: list[str] = field(default_factory=list) # current LLM-expanded catalog queries
-    suppressed_attributes: set[str] = field(default_factory=set) # e.g. {"brand", "budget"}
-    asked_attributes: list[str] = field(default_factory=list) # e.g. ["color", "size"]
+    category_phrases: list[str] = field(default_factory=list)
+    preference_phrases: list[str] = field(default_factory=list)
+    exclusions: list[str] = field(default_factory=list)
+    slot_values: dict[str, list[str]] = field(default_factory=dict)
+    search_rewrites: list[str] = field(default_factory=list)
+    suppressed_attributes: set[str] = field(default_factory=set)
+    asked_attributes: list[str] = field(default_factory=list)
 
     def category_terms(self) -> tuple[str, ...]:
         return tuple(
@@ -71,13 +71,14 @@ class SessionState:
 
     session_id: str
     customer_profile: dict
-    active: ActiveState = field(default_factory=ActiveState) # stores what system knows about the user's intent
+    active: ActiveState = field(default_factory=ActiveState)
     last_ask_attribute: str | None = None
     last_recommendations: tuple[str, ...] = ()
     recommendation_exposure: set[str] = field(default_factory=set)
     turn_count: int = 0
     last_feedback_negative: bool = False
     clarification_outcomes: dict[str, str] = field(default_factory=dict)
+    semantic_call_count: int = 0
 
     def answerability_posterior(self, prior: float, *, strength: float) -> float:
         """

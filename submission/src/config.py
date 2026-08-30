@@ -1,10 +1,8 @@
 """
 Runtime configuration for retrieval, ranking, dialog, and semantics.
 
-These values were obtained through staring hard at outputs.
-It is possible/advisable to further tune them.
-
-Trade-offs are commented.
+The comments beside tuned values describe the direction of their trade-offs.
+Values without a completed ablation are explicitly marked for further tuning.
 """
 
 from __future__ import annotations
@@ -16,29 +14,27 @@ from dataclasses import dataclass
 class AgentConfig:
     # Configuration consumed by :class:`submission.src.agent.ShoppingAgent`
 
-    # Competition definied. do not edit.
+    # Competition-defined output limits. Do not edit.
     max_turns: int = 10
     max_recommendations: int = 10
 
-    # Retrieval depths. 
-    # Raising any of the depths improves long-tail candidate recall but increases latency; 
-    ## Long tail recall refers to surfacing less popular items that may be more relevant to the user's query
-    candidate_depth: int = 160 # items from initial generation PER route (we have 5 routes, so 5*160=800 candidates before reranking)
-    category_pool_depth: int = 800 # candidates filtered from category search, to be merged.
-    rerank_depth: int = 800 # items passed to reranker
+    # Retrieval depths. Raising them improves long-tail candidate recall but
+    # increases latency and memory. Candidate depth applies to each of 5 routes.
+    candidate_depth: int = 160
+    category_pool_depth: int = 800
+    rerank_depth: int = 800
 
     # RRF controls
-    # lowering k makes it sharply rewards top results.
-    # standard k=60 starting point is retained, value not experimented on
+    # Lowering k rewards top-ranked route results more sharply. The conventional
+    # k=60 starting point is retained; it still needs target-disjoint tuning.
     rrf_k: int = 60
 
-    # Query term limits. 
-    # More terms preserve verbose requests but increase text search load
-    # fewer reduce latency and risk dropping evidence.
-    max_query_terms: int = 40 # Max terms allowed in general queries
-    max_focused_terms: int = 12 # Max terms allowed for focused queries
+    # More terms preserve verbose requests but increase search load; fewer terms
+    # reduce latency but risk dropping evidence.
+    max_query_terms: int = 40
+    max_focused_terms: int = 12
 
-    # Focus scoring formula parameters. 
+    # Focus scoring formula parameters.
     # Focus = sigmoid(intercept + preference_weight * count + category_weight * presence).
     # Raising either evidence weight moves sooner toward focused retrieval
     # a higher intercept makes all sessions more focused.
@@ -47,8 +43,8 @@ class AgentConfig:
     focus_preference_weight: float = 0.95
     focus_category_weight: float = 0.35
 
-    # Multi-route generator influence weights. 
-    # Each route weight increases that generator's influence when raised i.e. increases reliance on the other routes when lowered. 
+    # Raising a route weight increases that generator's influence; lowering it
+    # transfers influence to the other routes.
     # A separate typed-attribute route should be tested again for generalisations.
     focused_route_weights: tuple[tuple[str, float], ...] = (
         ("constraint", 1.60),
@@ -66,7 +62,8 @@ class AgentConfig:
     )
 
     # Candidate assessment via top-N set overlap.
-    # larger overlap_depth increases the number of top results considered for overlap, which can improve stability but may reduce responsiveness to new information i.e. measure broad scope of agreement
+    # Larger overlap depth measures agreement across a broader result window but
+    # can make the stability estimate less responsive to new evidence.
     assessment_overlap_depth: int = 20
     assessment_stability_scale: float = 2.50
 
@@ -80,10 +77,10 @@ class AgentConfig:
     budget_signal_weight: float = 0.12
     exclusion_penalty: float = 0.70
 
-    # Clarification parameters. 
+    # Clarification parameters.
     # higher threshold/ceiling asks fewer questions
     # More prior strength adapts more slowly to this customer's replies. 
-    # Broad recovery after a declined field improved TechnicalScore and is retained at one opportunity/session.
+    # One broad recovery after a declined field improved TechnicalScore.
     question_candidate_depth: int = 50
     question_value_threshold: float = 0.08
     question_stability_weight: float = 0.55
@@ -93,7 +90,7 @@ class AgentConfig:
     broad_recovery_weight: float = 0.75
     broad_recovery_confidence_ceiling: float = 0.92
 
-    # Semantic API controls. 
+    # Semantic API controls.
     # Larger time/input/output/call/cache values increase coverage and cost or memory
     # smaller values fail or gate sooner
     # 4s timed out in a live probe
@@ -102,13 +99,17 @@ class AgentConfig:
     semantic_max_input_chars: int = 4_000
     semantic_max_output_tokens: int = 220
     semantic_max_calls_per_run: int = 16
+    # A lower per-session cap bounds worst-case user latency/cost; raising it can
+    # recover more unrelated language failures across ten turns. Two permits one
+    # early interpretation and one later correction, but has not been tuned.
+    semantic_max_calls_per_session: int = 2
     semantic_cache_size: int = 256
 
     # Semantic grounding thresholds and terms.
-    # min_confidence: refers to the minimum confidence threshold for semantic grounding.
-    # rewrite_terms: how much the llm is able to rewrite; richer expansions but increases drift risk. 
-    # exact_phrase_min_terms: how many terms must match exactly to be considered a strong match; more terms suppresses model calls, fewer may mistake generic matches for strong evidence.
-    # low_stability_threshold: controls when to call the model more often
+    # Higher confidence rejects more uncertain fields; lower accepts more noise.
+    # More rewrite terms preserve richer expansions but increase drift risk.
+    # More exact-phrase terms suppress fewer calls; fewer can mistake generic
+    # overlap for strong evidence. A higher stability threshold calls more often.
     semantic_min_confidence: float = 0.55
     semantic_max_rewrite_terms: int = 12
     semantic_exact_phrase_min_terms: int = 3

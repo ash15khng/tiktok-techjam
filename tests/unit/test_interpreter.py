@@ -55,9 +55,26 @@ class MessageInterpreterTest(unittest.TestCase):
         frame = self.parse("I don't have a preference; please use your judgment.", "color")
 
         self.assertEqual(frame.no_preference_attribute, Attribute.COLOR)
+        self.assertEqual(frame.preference_phrases, ())
+
+    def test_explicit_boundary_reply_does_not_leave_pronoun_search_noise(self) -> None:
+        frame = self.parse("I don't have an additional preference for brand.")
+
+        self.assertEqual(frame.no_preference_attribute, Attribute.BRAND)
+        self.assertEqual(frame.preference_phrases, ())
+        self.assertEqual(frame.slot_updates[0].operation, "suppress")
+
+    def test_category_boundary_reply_does_not_become_a_category_value(self) -> None:
+        frame = self.parse("I don't have an additional preference for category.")
+
+        self.assertEqual(frame.no_preference_attribute, Attribute.CATEGORY)
+        self.assertEqual(frame.category_phrases, ())
+        self.assertEqual(frame.slot_updates[0].operation, "suppress")
 
     def test_real_user_compound_request_separates_category_budget_and_exclusion(self) -> None:
-        frame = self.parse("I'm looking for running shoes under $100, preferably blue, no leather.")
+        frame = self.parse(
+            "I'm looking for running shoes under $100, preferably blue, no leather."
+        )
 
         self.assertEqual(frame.category_phrases, ("running shoes",))
         self.assertIn("under $100", frame.preference_phrases)
@@ -181,6 +198,35 @@ class MessageInterpreterTest(unittest.TestCase):
 
         self.assertEqual(provider.calls, 1)
         self.assertEqual(enriched.query_rewrites, ("water resistant windbreaker commute",))
+
+    def test_grounded_category_replaces_only_ambiguous_fallback_category(self) -> None:
+        class CategoryParser:
+            def interpret(self, message: str, context: str) -> SemanticInterpretation:
+                return SemanticInterpretation(
+                    query_rewrites=("comfortable house slippers",),
+                    slot_hypotheses=(
+                        SemanticSlotHypothesis(
+                            "category", "slippers", 0.70, "slippers", "replace"
+                        ),
+                    ),
+                )
+
+        interpreter = MessageInterpreter(CategoryParser())
+        frame = interpreter.parse_deterministic(
+            "I need something to wear at home; slippers are what I mean.",
+            last_ask_attribute=None,
+        )
+        enriched = interpreter.enrich_with_semantics(frame, context="", force=True)
+
+        self.assertEqual(enriched.category_phrases, ("slippers",))
+        self.assertEqual(
+            [
+                update.value
+                for update in enriched.slot_updates
+                if update.attribute is Attribute.CATEGORY
+            ],
+            ["slippers"],
+        )
 
 
 if __name__ == "__main__":

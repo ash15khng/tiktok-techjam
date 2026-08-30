@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from submission.src.agent import ShoppingAgent
+from submission.src.config import AgentConfig
 from submission.src.contracts import (
     ALLOWED_ATTRIBUTES,
     SemanticInterpretation,
@@ -110,6 +111,21 @@ class AgentIntegrationTest(unittest.TestCase):
         active = self.agent._agent.sessions.get("session").active
         self.assertIn("color", active.suppressed_attributes)
 
+    def test_additional_preference_decline_preserves_existing_value(self) -> None:
+        self.agent.respond("session", "I'm looking for shoes. cotton", 1, 10)
+        state = self.agent._agent.sessions.get("session")
+        state.last_ask_attribute = "material"
+
+        self.agent.respond(
+            "session",
+            "I don't have an additional preference for material.",
+            2,
+            10,
+        )
+
+        self.assertIn("cotton", state.active.preference_phrases)
+        self.assertIn("material", state.active.suppressed_attributes)
+
     def test_next_turn_does_not_repeat_shown_products_when_alternatives_exist(self) -> None:
         first = self.agent.respond("session", "I'm looking for shoes.", 1, 1)
         second = self.agent.respond(
@@ -195,6 +211,29 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual(active.suppressed_attributes, {"budget", "color"})
         self.assertNotIn("red", active.query_terms())
         self.assertNotIn("black", active.query_terms())
+
+    def test_semantic_calls_are_bounded_per_session(self) -> None:
+        class EmptyCountingParser:
+            calls = 0
+
+            def interpret(self, message: str, context: str) -> SemanticInterpretation:
+                self.calls += 1
+                return SemanticInterpretation()
+
+        parser = EmptyCountingParser()
+        catalog_path = Path(self.temporary_directory.name) / "catalog.jsonl"
+        agent = ShoppingAgent(
+            catalog_path,
+            config=AgentConfig(semantic_max_calls_per_session=1),
+            semantic_parser=parser,
+        )
+        agent.reset("bounded", {})
+
+        agent.respond("bounded", "Something comfortable that works after a long shift.", 1, 10)
+        agent.respond("bounded", "Something polished that works for a formal event.", 2, 10)
+
+        self.assertEqual(parser.calls, 1)
+        self.assertEqual(agent.sessions.get("bounded").semantic_call_count, 1)
 
 
 if __name__ == "__main__":
