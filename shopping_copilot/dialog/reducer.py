@@ -151,17 +151,31 @@ class StateReducer:
         # -------------------------------------------------------------------
         # Update Preserved Raw Phrases and Residual Product Terms
         # -------------------------------------------------------------------
-        # Combine recent phrases, capping to avoid unbounded growth
-        raw_phrases_list = list(prior_state.raw_phrases)
-        for need in intent_frame.subjective_needs:
-            if need and need not in raw_phrases_list:
-                raw_phrases_list.append(need)
+        META_PHRASES = (
+            "those options", "not quite right", "ask me about", "one specific attribute",
+            "don't have an additional", "dont have an additional", "no additional preference",
+            "still exploring", "use your judgment",
+        )
 
-        # Residual product terms: current terms take precedence
-        term_dict = {t: True for t in intent_frame.product_terms}
-        for t in prior_state.residual_product_terms:
-            term_dict[t] = True
-        residual_terms = tuple(term_dict.keys())[:30]
+        if is_override_turn:
+            # Clean reset on override
+            raw_phrases_list = [
+                need for need in intent_frame.subjective_needs
+                if need and not any(m in need.lower() for m in META_PHRASES)
+            ]
+            residual_terms = tuple(dict.fromkeys(intent_frame.product_terms))[:30]
+        else:
+            raw_phrases_list = list(prior_state.raw_phrases)
+            for need in intent_frame.subjective_needs:
+                if need and not any(m in need.lower() for m in META_PHRASES):
+                    if need not in raw_phrases_list:
+                        raw_phrases_list.append(need)
+
+            # Residual product terms: current terms take precedence
+            term_dict = {t: True for t in intent_frame.product_terms}
+            for t in prior_state.residual_product_terms:
+                term_dict[t] = True
+            residual_terms = tuple(term_dict.keys())[:30]
 
         return ActiveState(
             category=category,

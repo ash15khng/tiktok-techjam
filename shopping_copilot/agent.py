@@ -35,6 +35,9 @@ class ShoppingAgent:
         self.catalog_trie = build_default_trie()
         for attr, values in self.catalog_index.get_vocabulary_by_attribute().items():
             for val in values:
+                val_clean = val.lower().strip()
+                if len(val_clean) < 3 and attr != Attribute.SIZE:
+                    continue
                 self.catalog_trie.insert(val, attr, val)
 
         # Component 2 subsystems

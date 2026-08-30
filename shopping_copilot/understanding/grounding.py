@@ -312,6 +312,18 @@ class TrieNode:
     matches: dict[Attribute, str] = field(default_factory=dict)
 
 
+COMMON_EXCLUDED_ALIASES = frozenset([
+    "i", "a", "an", "the", "in", "on", "at", "to", "for", "of", "and", "or", "it", "my", "me",
+    "is", "are", "was", "were", "be", "do", "does", "did", "have", "has", "had", "what", "which",
+    "who", "whom", "this", "that", "these", "those", "from", "by", "with", "as", "about",
+    "store", "shop", "item", "items", "product", "products", "online", "outlet", "official",
+    "brand", "brands", "style", "color", "material", "size", "feature", "category",
+    "accessories", "clothing", "shoes", "jewelry", "apparel", "men", "women", "kids", "boys", "girls",
+])
+
+VALID_SINGLE_LETTER_SIZES = frozenset(["s", "m", "l", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
+
+
 class CatalogTrie:
     """Token trie for fast longest-match entity extraction over catalog aliases."""
 
@@ -322,6 +334,16 @@ class CatalogTrie:
         tokens = [normalize_token(t) for t in phrase.split() if normalize_token(t)]
         if not tokens:
             return
+        
+        # Filter single tokens that are pronouns, stopwords, or generic noise
+        if len(tokens) == 1:
+            tok = tokens[0].lower()
+            if tok in COMMON_EXCLUDED_ALIASES:
+                if attribute != Attribute.SIZE or tok not in VALID_SINGLE_LETTER_SIZES:
+                    return
+            if len(tok) <= 1 and (attribute != Attribute.SIZE or tok not in VALID_SINGLE_LETTER_SIZES):
+                return
+
         curr = self.root
         for token in tokens:
             if token not in curr.children:
@@ -345,7 +367,7 @@ class CatalogTrie:
                 if tok in curr.children:
                     curr = curr.children[tok]
                     if curr.matches:
-                        # Grab first matching attribute (or all)
+                        # Grab best matching attribute
                         for attr, canonical in curr.matches.items():
                             longest_match = (attr, canonical, j)
                 else:
@@ -353,6 +375,16 @@ class CatalogTrie:
 
             if longest_match:
                 attr, canonical, end_idx = longest_match
+                # Verify single token matches are not standalone pronouns/stopwords
+                if i == end_idx:
+                    matched_tok = tokens[i].lower()
+                    if matched_tok in COMMON_EXCLUDED_ALIASES and attr != Attribute.SIZE:
+                        i += 1
+                        continue
+                    if len(matched_tok) <= 1 and attr != Attribute.SIZE:
+                        i += 1
+                        continue
+
                 start_char = token_matches[i].start()
                 end_char = token_matches[end_idx].end()
                 raw_span = text[start_char:end_char]

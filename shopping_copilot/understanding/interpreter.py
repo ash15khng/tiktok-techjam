@@ -116,6 +116,34 @@ class MessageInterpreter:
             )
 
         # -------------------------------------------------------------------
+        # Step 1.5: Direct Category Intent Pattern ("I'm looking for <CATEGORY>")
+        # -------------------------------------------------------------------
+        cat_match = re.search(
+            r"\b(?:i'm looking for|im looking for|looking for|searching for|want to buy)\s+([a-zA-Z0-9\s&,'-]+?)(?:[.,;]|(?:\s+(?:but|with|style:|material:|color:|brand:|size:|budget:|feature:|for|under|around|my\s+preference))\b|$)",
+            raw_message,
+            re.IGNORECASE,
+        )
+        if cat_match:
+            candidate_cat = cat_match.group(1).strip()
+            candidate_cat = re.sub(r"^\b(?:a|an|the|some)\b\s*", "", candidate_cat, flags=re.IGNORECASE).strip()
+            if candidate_cat and len(candidate_cat) > 2 and candidate_cat.lower() not in STOPWORDS:
+                slot_updates.append(
+                    SlotUpdate(
+                        attribute=Attribute.CATEGORY,
+                        operation="replace" if is_override else "set",
+                        relation=Relation.EQ,
+                        normalized_values=(candidate_cat.lower(),),
+                        raw_span=candidate_cat,
+                        char_span=cat_match.span(1),
+                        strength="hard",
+                        explicitness="explicit",
+                        confidence=0.98,
+                        provenance="pattern_category",
+                        source_turn=turn,
+                    )
+                )
+
+        # -------------------------------------------------------------------
         # Step 2: Handle Structured Prefixes ("color: black", "material: cotton")
         # -------------------------------------------------------------------
         for match in STRUCTURED_PREFIX_RE.finditer(raw_message):
