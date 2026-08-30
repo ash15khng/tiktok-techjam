@@ -329,3 +329,44 @@ grouping. The 20% release partition was held out until configuration freeze and
 has since been included in the final compatibility replay, so only the organizer's
 800 sessions are truly unseen. No private-set performance, LLM score gain,
 production user impact, provider cost, or external API reliability is claimed.
+
+## Frozen-membership ordering and recovery pass
+
+This pass treated Hit Rate and MTTC as safety constraints rather than accepting
+an aggregate-score gain that delayed the target. The 160 working sessions began
+at Hit Rate `0.9875`, MRR `0.632125`, MTTC `2.58125`, and score `0.851762`.
+
+| Working-fold variant | Hit Rate | MRR | MTTC | Score | Decision |
+|---|---:|---:|---:|---:|---|
+| Previous generalized checkpoint | 0.9875 | 0.632125 | 2.58125 | 0.851762 | Reference |
+| Remove membership popularity/profile priors | 0.9875 | 0.612138 | 3.00000 | 0.837391 | Reject: delayed hits |
+| Phrase rarity 0.15, pool 50 | 0.9875 | 0.635935 | 2.58125 | 0.852905 | Reject: scan cost, smaller gain |
+| Profile-only ordering 0.03 | 0.9875 | 0.635670 | 2.58125 | 0.852826 | Reject: scenario regressions |
+| Popularity ordering 0.05, all sessions | 0.9875 | 0.667716 | 2.58125 | 0.862440 | Reject: Override MRR regression |
+| Popularity ordering 0.05, override-gated | 0.9875 | 0.669479 | 2.58125 | 0.862969 | Retain |
+| Popularity ordering 0.10, override-gated | 0.9875 | 0.694688 | 2.58125 | 0.870532 | Reject: Boundary MRR regression |
+
+The retained `FrozenTopKOrderer` receives the relevance- and exposure-ordered
+union, freezes its first ten IDs, and can only reorder those IDs. Its current
+secondary score adds a `0.05` bounded log-popularity bonus to reciprocal rank.
+After any intent correction, popularity ordering is disabled for the rest of the
+session. Phrase-rarity and profile-ordering implementations remain available at
+zero weight for future target-disjoint experiments; they are not active claims.
+
+The final 200-session compatibility replay kept Hit Rate `0.990` and MTTC
+`2.550` exactly while raising MRR from `0.617232` to `0.657026` and score from
+`0.849170` to `0.861108`. MRR improved in Buying, Browsing, and Boundary, while
+Intent Override was unchanged. The 14-case hard suite kept Hit Rate `0.857143`
+and MTTC `1.357143`, with MRR moving from `0.737500` to `0.741071`.
+
+Reliability work made turn handling idempotent. Successful responses are stored
+by turn; an exact retry returns the same response without replaying state, and a
+late request returns the newest completed response. A component exception now
+prefers the last successful recommendations before fresh FTS and global guard
+fill. Aggregate diagnostics expose cache, late-turn, and fallback counts without
+recording messages, profiles, credentials, or product IDs.
+
+The latest 40-turn Windows audit measured 8.07 seconds startup, 272 ms mean,
+312 ms p95, and 325 ms maximum response latency. Peak working set was 347 MiB.
+A paired ordering toggle had similar mean and maximum latency; the observed
+approximately 8 ms p95 difference requires repetition before attribution.

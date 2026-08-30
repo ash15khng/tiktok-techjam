@@ -43,6 +43,7 @@ classDiagram
     class RetrievalPlanner
     class LexicalRetriever
     class LightweightReranker
+    class FrozenTopKOrderer
     class QuestionPolicy
     class SemanticEscalationPolicy
     class ResponseGuard
@@ -60,6 +61,7 @@ classDiagram
     ShoppingAgent *-- RetrievalPlanner : route strategy
     ShoppingAgent *-- LexicalRetriever : candidates
     ShoppingAgent *-- LightweightReranker : final order
+    ShoppingAgent *-- FrozenTopKOrderer : frozen Top-10 order
     ShoppingAgent *-- QuestionPolicy : clarification
     ShoppingAgent *-- SemanticEscalationPolicy : call decision
     ShoppingAgent *-- ResponseGuard : API safety
@@ -367,6 +369,10 @@ classDiagram
         +recommendation_exposure: set
         +clarification_outcomes: dict
         +semantic_call_count: int
+        +intent_override_active: bool
+        +responses_by_turn: dict
+        +last_completed_turn: int
+        +last_recommendations: tuple
         +answerability_posterior(prior, strength) float
     }
     class SessionStore {
@@ -459,6 +465,9 @@ classDiagram
     class LightweightReranker {
         +rank(candidates, active, profile) list
     }
+    class FrozenTopKOrderer {
+        +order(candidates, active, profile, allow_popularity) list
+    }
     class BudgetRange {
         <<frozen_dataclass>>
         +lower: float?
@@ -497,6 +506,10 @@ classDiagram
     LightweightReranker --> AgentConfig : score weights
     LightweightReranker ..> ActiveState : active constraints
     LightweightReranker --> CandidateEvidence : mutates final score
+    FrozenTopKOrderer --> CatalogStore : bounded popularity and phrase evidence
+    FrozenTopKOrderer --> AgentConfig : order-only weights
+    FrozenTopKOrderer ..> ActiveState : current phrases
+    FrozenTopKOrderer --> CandidateEvidence : reorders frozen first ten
     RankingUtilities ..> BudgetRange : parses
     RankingUtilities ..> CandidateEvidence : exposure ordering
     RankingUtilities ..> ActiveState : explanation
@@ -516,6 +529,9 @@ Use notes:
   focused-constraint candidate generators against the same frozen store.
 - `LightweightReranker` combines normalized RRF, IDF coverage, exact phrases,
   capped profile/popularity evidence, budget fit, and exclusion penalties.
+- `FrozenTopKOrderer` operates after relevance and exposure ordering. It can
+  reorder only the already-selected first ten IDs; intent corrections disable
+  its weak popularity signal.
 - `BudgetRange` is the normalized optional lower/upper price constraint returned
   by the function-based budget parser.
 

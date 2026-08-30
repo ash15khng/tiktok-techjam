@@ -10,29 +10,29 @@ without an LLM or network.
 
 Complete-public development results from the unmodified evaluator:
 
-| Metric | Starter | Current code | Historical peak |
+| Metric | Starter | Current code | Earlier reference |
 |---|---:|---:|---:|
 | Hit Rate@10 | 0.125 | 0.990 | 0.995 |
-| MRR | 0.068 | 0.617232 | 0.635746 |
+| MRR | 0.068 | 0.657026 | 0.635746 |
 | MTTC | 9.81 | 2.550 | 2.245 |
-| TechnicalScore | 0.106710 | 0.849170 | 0.863324 |
+| TechnicalScore | 0.106710 | 0.861108 | 0.863324 |
 
-The current result was replayed after refactoring with zero session-level
-differences from the immediate parent commit. The historical peak predates the
-generalization work and is not the current submission result. Neither result
-estimates the 800 private sessions. Numeric tuning used four scenario-stratified,
-target/title-family-disjoint working folds while a 20% release partition was
-held out. Their locked 160-session score is `0.851762`; the release partition
-was later included in the final compatibility replay without parameter tuning.
+The retained ordering pass leaves Top-10 membership and first-hit turns unchanged
+from the preceding generalized checkpoint while improving MRR by `0.039794`.
+Neither result estimates the 800 private sessions. Numeric selection used four
+scenario-stratified, target/title-family-disjoint working folds. Their current
+160-session score is `0.862969`. A fifth public partition had already been opened
+in an earlier compatibility replay, so it is not described as an independent
+holdout for this later work.
 
 Current full-public scenario breakdown:
 
 | Scenario | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|
-| Buying | 0.987500 | 0.594678 | 1.925000 |
-| Browsing | 1.000000 | 0.591478 | 2.512500 |
+| Buying | 0.987500 | 0.653780 | 1.925000 |
+| Browsing | 1.000000 | 0.623943 | 2.512500 |
 | Intent Override | 0.966667 | 0.661799 | 4.266667 |
-| Boundary | 1.000000 | 0.870000 | 2.700000 |
+| Boundary | 1.000000 | 0.933333 | 2.700000 |
 
 ## Implemented product
 
@@ -60,10 +60,14 @@ Current full-public scenario breakdown:
    volume, profile overlap, exclusions, and missing-neutral price bounds.
 8. Previously shown products move behind unseen alternatives after rejection.
    Exposure resets on Intent Override.
-9. Clarification uses top-candidate coverage, diversity, a catalog-derived
+9. The selected Top 10 is frozen before a small log-popularity ordering bonus.
+   The bonus cannot change membership and is disabled after an intent correction.
+10. Duplicate and late turn requests return stored response snapshots without
+   replaying state; component failure prefers the last successful list.
+11. Clarification uses top-candidate coverage, diversity, a catalog-derived
    prior, and session-specific answer/decline observations. After an unanswered
    field, one broad recovery question lets the customer volunteer a priority.
-10. `ResponseGuard` removes invalid/duplicate IDs, caps the list at ten, and
+12. `ResponseGuard` removes invalid/duplicate IDs, caps the list at ten, and
    preserves valid output under component failure.
 
 ## Rule and scope review
@@ -110,17 +114,17 @@ not live-validated.
 The original pre-registry Windows audit measured 2.45 s startup and 265 ms p95.
 The current 40-request first-turn audit measured:
 
-- catalog startup: 7.81 s;
-- mean response: 315 ms;
-- p95 response: 574 ms;
-- maximum response: 647 ms.
+- catalog startup: 8.07 s;
+- mean response: 272 ms;
+- p95 response: 312 ms;
+- maximum response: 325 ms;
+- peak working set: 347 MiB.
 
-Cold start remains below the provisional 10-second target; p95 is now about
-74 ms above the provisional 500 ms target. A prefix-pruned attribute matcher
-reduced matching work without changing its reference output, but profiles show
-the remaining slow path is mainly SQLite retrieval and full-union reranking.
-Depth reductions require a candidate-recall ablation. Memory and all timings
-must be repeated on the organizer's machine.
+Cold start and p95 remain below the provisional 10-second and 500-millisecond
+targets. A paired ordering toggle changed p95 by about 8 ms while mean and
+maximum latency were effectively unchanged; this single-machine difference is
+too noisy to attribute. Memory and all timings must be repeated on the
+organizer's machine.
 
 ## User-interaction considerations
 
@@ -160,6 +164,11 @@ Four rejected experiments are important:
   from `0.851762` to `0.836906`; a structured-evidence reranker scored
   `0.844619`. Both duplicated existing constraint evidence and added latency,
   so neither remains in runtime code.
+- removing the existing membership-level weak priors delayed target hits;
+  increasing the new popularity order weight to `0.10` improved aggregate MRR
+  but regressed Boundary MRR, so `0.05` was retained;
+- phrase-rarity ordering added scans without beating the simpler retained
+  variant, while profile-only ordering caused small scenario regressions.
 
 The first live LLM output also showed why grounding is necessary: it proposed
 plausible category, material, and color values that were not explicitly stated.

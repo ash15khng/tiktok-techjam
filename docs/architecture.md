@@ -60,6 +60,7 @@ submission/
         |-- budget.py                Three-valued price evidence
         |-- reranker.py              Inspectable final score
         |-- exposure.py              Across-turn novelty
+        |-- ordering.py              Frozen-membership Top-10 ordering
         `-- explanations.py          Evidence-grounded response text
 ```
 
@@ -72,7 +73,9 @@ supplied evaluator imports `starter.agent.Agent`. Product logic belongs only in
 ```mermaid
 flowchart TD
     A[reset: session ID + anonymized profile] --> B[Fresh SessionState]
-    C[respond: message + turn + top_k] --> D[Deterministic MessageInterpreter]
+    C[respond: message + turn + top_k] --> C1{Response for this turn cached?}
+    C1 -- yes --> R
+    C1 -- no --> D[Deterministic MessageInterpreter]
     B --> D
     D --> E[Immutable IntentFrame]
     E --> S{Pre-retrieval semantic<br/>call justified?}
@@ -91,7 +94,8 @@ flowchart TD
     N -->|accepted state delta| F
     M -- no --> O[Unseen-first ordering]
     L --> O
-    O --> P[QuestionPolicy]
+    O --> O2[Freeze membership; bounded Top-10 ordering]
+    O2 --> P[QuestionPolicy]
     P --> Q[Explanation + ResponseGuard]
     Q --> R[message + ask_attribute + Top 10 + usage]
 ```
@@ -183,7 +187,11 @@ State invariants:
 - semantic query rewrites are stored separately from durable user preferences
   and cleared when a correction could make them stale;
 - any override clears Recommendation Exposure because old rejection no longer
-  has the same meaning.
+  has the same meaning;
+- any override marks the session as corrected so weak popularity cannot reorder
+  the corrected Top 10; and
+- successful response snapshots are keyed by turn, making exact retries
+  idempotent and preventing duplicate state transitions.
 
 The optional model receives `ActiveState.context_snapshot()`, not concatenated
 chat history. Superseded evidence therefore cannot re-enter through the prompt.
@@ -257,7 +265,13 @@ session request. Popularity uses `log1p(rating_number)` capped at 20,000; it is 
 tie-breaking prior, not purchase reconstruction.
 
 After reranking, `unseen_first` stably partitions unseen products ahead of
-already exposed products. Score order is preserved inside each partition.
+already exposed products. The first ten IDs are then frozen: `FrozenTopKOrderer`
+may change their order but cannot introduce or remove an ID. Its retained score
+is the existing reciprocal-rank order plus `0.05` bounded log-popularity. The
+popularity bonus is disabled for the rest of a session after an intent override.
+This raised working-fold MRR without changing Hit Rate, MTTC, or Override MRR.
+Optional exact-phrase-rarity and profile-ordering signals are implemented but
+set to zero after their ablations failed the cost/scenario gates.
 
 Every numeric control above lives in `submission/src/config.py`. Its adjacent
 comment explains what increasing/decreasing the value does and records the
@@ -340,10 +354,14 @@ paired 50-session ablation spent tokens without improving a score.
 5. emits a non-empty customer message; and
 6. clamps token counts to non-negative integers.
 
-If the main pipeline raises, the agent performs a bounded field-weighted catalog
-search over the current message and returns it through the same guard. A model
-timeout or invalid response becomes a semantic no-op rather than a whole-turn
-failure.
+Exact duplicate turns return a deep copy of the stored response without parsing,
+retrieval, token use, or state mutation. A late out-of-order request returns the
+latest successful snapshot. If the main pipeline raises, the agent first reuses
+the last successful recommendation list, then tries bounded field-weighted FTS,
+then lets `ResponseGuard` fill from valid catalog IDs. All paths pass through the
+same contract boundary. Aggregate diagnostics count cache hits, out-of-order
+requests, fallbacks, semantic calls, and active ordering flags without storing
+customer text, profile values, credentials, or product IDs.
 
 ## 13. Evaluation discipline
 
@@ -361,18 +379,21 @@ python -m tests.stress.hard_evaluator
 python -m evaluator.local_evaluator
 ```
 
-The post-refactor full-public replay scored Hit Rate `0.990`, MRR `0.617232`,
-MTTC `2.550`, Efficiency `0.845`, and TechnicalScore `0.849170`, with the model
-disabled and zero tokens. The immediate parent commit produced identical
-aggregates and zero session-level hit-turn/rank differences. The previously
-reported `0.863324` is retained only as a historical pre-generalization peak.
+The final full-public compatibility replay scored Hit Rate `0.990`, MRR
+`0.657026`, MTTC `2.550`, Efficiency `0.845`, and TechnicalScore `0.861108`,
+with the model disabled and zero tokens. Relative to the preceding generalized
+checkpoint, Top-10 membership and first-hit turns are unchanged while MRR rises
+by `0.039794`. This is public-development evidence, not a private-set estimate.
 
 ## 14. Operational characteristics
 
 The standard-library-only offline path needs no GPU, model download, SDK, or
-external vector database. The latest local 40-first-turn audit measured 7.81 s
-catalog startup, 315 ms mean response, 574 ms p95, and 647 ms maximum. These are
-Windows development measurements, not guarantees for the organizer machine.
+external vector database. The latest local 40-first-turn audit measured 8.07 s
+catalog startup, 272 ms mean response, 312 ms p95, and 325 ms maximum, with a
+347 MiB peak working set. A paired ordering toggle showed no meaningful mean or
+maximum latency change; its approximately 8 ms p95 difference is within a noisy
+single-machine audit. These are Windows development measurements, not guarantees
+for the organizer machine.
 
 ## 15. Ownership map for five collaborators
 

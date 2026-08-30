@@ -10,7 +10,7 @@ public-set overfitting, local work uses three separate gates.
 |---|---|---|
 | Frozen 50,000-product catalog | Runtime input and unsupervised schema/statistics source | Yes; every judged agent receives it |
 | 160 public development sessions | Repeated engineering and ablation | Yes |
-| 40 public release-check sessions | Held out during tuning, then included in the final compatibility replay | No, until release candidate |
+| 40 public release-check sessions | Earlier release-check partition; now opened compatibility data | No longer an independent test |
 | 14 frozen hard-language cases | Product-language stress test; targets are outside the 200 public targets | Only through general fixes, never case/ASIN rules |
 | 800 organizer-private sessions | Final judging | Never |
 
@@ -65,7 +65,7 @@ $env:SHOPPING_COPILOT_LLM_ENABLED = "0"
 python -m devtools.evaluate_development_folds
 ```
 
-## Current locked checkpoint
+## Current working-fold checkpoint
 
 The retained deterministic configuration scored the following on the 160
 working sessions:
@@ -73,16 +73,17 @@ working sessions:
 | Metric | Result |
 |---|---:|
 | Hit Rate@10 | 0.987500 |
-| MRR | 0.632125 |
+| MRR | 0.669479 |
 | MTTC | 2.581250 |
 | Efficiency | 0.841875 |
-| TechnicalScore | 0.851762 |
+| TechnicalScore | 0.862969 |
 
-The 40-session partition was not used during the re-engineering/tuning pass. It
-has since been included in the final full-public compatibility replay, so it is
-no longer described as unseen. No parameter was selected from its results. The
-generalized full-public score is `0.849170`; the older `0.863324` remains a
-historical pre-generalization peak, not the tuning target for these changes.
+The 40-session partition was protected during the initial re-engineering pass,
+then opened for a full-public compatibility replay. Later ordering work selected
+its weight only on the 160 working sessions and used the full 200 only for final
+reporting, but the earlier exposure means the partition is not statistically
+independent. The organizer's 800 private sessions remain the actual test. The
+current full-public compatibility score is `0.861108`.
 
 ## Acceptance gates
 

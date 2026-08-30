@@ -214,6 +214,9 @@ sequenceDiagram
     E->>A: respond(session_id, message, turn, top_k)
     A->>S: get(session_id)
     S-->>A: SessionState
+    alt exact duplicate or late turn
+        A-->>E: stored response snapshot; no state replay
+    else new turn
     A->>I: parse_deterministic(message, last ask)
     I-->>A: IntentFrame
     opt semantic preflight approved
@@ -235,12 +238,14 @@ sequenceDiagram
     end
 
     A->>A: unseen-first partition
+    A->>A: freeze first 10 IDs and apply bounded ordering
     A->>P: choose(state, top candidates, assessment, turn)
     P-->>A: QuestionDecision
     A->>G: message + attribute + ranked IDs + usage
     G-->>E: contract-safe response
+    end
 
-    Note over A,G: Any component exception uses field-weighted FTS,<br/>then passes through the same guard.
+    Note over A,G: Any component exception prefers the last good list,<br/>then field FTS, then the same guard.
 ```
 
 Compound-turn semantics enriches the frame before its single state reduction. If
@@ -410,6 +415,10 @@ flowchart TD
     F7 --> G
     G --> H[Sort by final score,<br/>RRF score, then ASIN]
     H --> I[Stable unseen-first partition]
+    I --> J[Freeze first 10 IDs]
+    J --> K{Intent corrected?}
+    K -->|yes| L[Preserve relevance order]
+    K -->|no| M[Bounded log-popularity tie-break]
 ```
 
 For candidate `p`, the implemented score is:
@@ -429,6 +438,10 @@ budget signal of zero rather than being treated as over budget. The profile can
 break close ties but cannot overpower current-session evidence. `unseen_first`
 does not alter scores; it preserves order inside the unseen and already-shown
 partitions.
+
+The final orderer cannot change membership. Its retained `0.05` popularity
+weight improves public working-fold MRR while exact intent corrections disable
+that weak prior. Phrase-rarity and profile-ordering weights are currently zero.
 
 ## 9. Optional semantic interpretation
 

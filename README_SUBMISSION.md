@@ -21,15 +21,13 @@ LLM disabled.
 | Metric | Published starter | Shopping Copilot |
 |---|---:|---:|
 | Hit Rate@10 | 0.125 | **0.990** |
-| MRR | 0.068034 | **0.617232** |
+| MRR | 0.068034 | **0.657026** |
 | MTTC | 9.81 turns | **2.550 turns** |
 | Efficiency | 0.119 | **0.845** |
-| TechnicalScore | 0.106710 | **0.849170** |
+| TechnicalScore | 0.106710 | **0.861108** |
 
 These are public-development results, not a claim about the private 800-session
 evaluation. This current generalized implementation misses two public sessions.
-The higher `0.863324` score in the experiment history belongs to an earlier,
-less-generalized configuration and is not presented as the current result.
 
 ## The product experience
 
@@ -91,7 +89,10 @@ Five inexpensive candidate routes look at different evidence: full fields,
 titles, focused constraints, category relevance, and category-conditioned
 popularity. Weighted Reciprocal Rank Fusion combines their candidates, then a
 lightweight reranker scores the complete bounded union using coverage, phrase
-matches, constraints, popularity, profile overlap, and exclusions.
+matches, constraints, popularity, profile overlap, and exclusions. The selected
+Top 10 is then frozen before a bounded ordering pass, so a weak tie-break can
+improve rank but cannot sacrifice a hit. That tie-break is disabled after intent
+corrections, where current-session evidence must dominate.
 
 ## System flow
 
@@ -130,10 +131,10 @@ offline result intact.
 
 | Scenario | Sessions | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|---:|
-| Buying | 80 | 0.9875 | 0.623095 | 1.775 |
-| Browsing | 80 | 1.0000 | 0.601935 | 2.0125 |
-| Intent Override | 30 | 1.0000 | 0.737394 | 3.866667 |
-| Boundary | 10 | 1.0000 | 0.7025 | 3.000 |
+| Buying | 80 | 0.9875 | 0.653780 | 1.925000 |
+| Browsing | 80 | 1.0000 | 0.623943 | 2.512500 |
+| Intent Override | 30 | 0.966667 | 0.661799 | 4.266667 |
+| Boundary | 10 | 1.0000 | 0.933333 | 2.700000 |
 
 A separate 14-case natural-language stress suite uses catalog targets outside
 the public 200. The deterministic system reaches 0.857143 Hit Rate. An offline
@@ -143,12 +144,12 @@ measured result, so paid semantics remains disabled by default.
 
 ## Performance and safety
 
-Local measurements over a 40-request broad-query audit:
+Latest local measurements over a 40-request deterministic first-turn audit:
 
-- 2.45 s catalog startup;
-- 230 ms mean response time;
-- 265 ms p95 response time;
-- 274 MiB steady working set after load and one response; and
+- 8.07 s catalog startup;
+- 272 ms mean response time;
+- 312 ms p95 response time;
+- 347 MiB peak working set; and
 - zero model tokens and $0 marginal API cost on the canonical public run.
 
 The runtime never reads labels, evaluator internals, hidden intent cards, raw

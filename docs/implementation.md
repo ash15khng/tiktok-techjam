@@ -17,6 +17,8 @@ message + Active State
     -> weighted Reciprocal Rank Fusion
     -> evidence, profile, and capped-popularity reranking
     -> unseen-first ordering, reset when intent changes
+    -> freeze selected Top 10 and apply a bounded popularity tie-break
+       (disabled after an intent correction)
     -> catalog prior + session-posterior clarification; one broad recovery after a decline
     -> explanation and contract validation
 ```
@@ -65,25 +67,27 @@ Place the verified catalog at `data/catalog.jsonl` before evaluation.
 
 The unmodified official evaluator currently reports:
 
-| Metric | Baseline | Current code | Historical peak |
+| Metric | Baseline | Current code | Earlier reference |
 |---|---:|---:|---:|
 | Hit Rate@10 | 0.125 | 0.990 | 0.995 |
-| MRR | 0.068 | 0.617232 | 0.635746 |
+| MRR | 0.068 | 0.657026 | 0.635746 |
 | MTTC | 9.81 | 2.550 | 2.245 |
-| TechnicalScore | 0.106710 | 0.849170 | 0.863324 |
+| TechnicalScore | 0.106710 | 0.861108 | 0.863324 |
 
-The current-code column was reproduced after the package refactor with zero
-session-level hit-turn/rank differences from its immediate parent commit. The
-historical peak predates the generalization changes and is not the current
-submission result. Neither column estimates private-set performance. New work
-used four target/title-family-disjoint working folds while holding out a 20%
-release partition; that partition was included only in the final compatibility
-replay. See
+The current-code result preserves Hit Rate and MTTC from the preceding
+generalized checkpoint while improving MRR through ordering that cannot change
+Top-10 membership. The earlier reference predates the generalization changes;
+its aggregate score is lower than the current score but its MTTC is still better. Neither
+column estimates private-set performance. New work used four
+target/title-family-disjoint working folds; the fifth public partition had
+already been opened in an earlier release replay and is therefore compatibility
+data, not an independent test. See
 [evaluation-methodology.md](evaluation-methodology.md). The older 40-request
 audit measured 2.45 s startup and 265 ms p95 before the catalog registry;
 current feasibility measurements and caveats are in [findings.md](findings.md).
 The retained full-union rerank and broad clarification recovery improved recall
-and first-hit turn. First-list ordering remains a tuning target.
+and first-hit turn. The new frozen-membership stage improves first-list ordering
+without changing target membership or first-hit turn.
 
 ## Semantic model status
 

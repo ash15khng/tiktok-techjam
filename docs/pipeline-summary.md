@@ -20,6 +20,7 @@ reset(profile)
     -> isolated SessionState
 
 respond(message)
+    -> return a cached snapshot for duplicate/late turns without replaying state
     -> deterministic category/payload/correction/exclusion/ANY parsing
     -> independent add/replace/exclude/set_any operations in compound turns
     -> explicit-or-contextual short reply resolution with provenance
@@ -35,6 +36,8 @@ respond(message)
        -> strict function-tool interpretation and local grounding
        -> one reretrieval only when accepted evidence changes state
     -> unseen-first Recommendation Exposure control
+    -> freeze Top-10 membership; apply bounded secondary ordering
+       -> popularity tie-break disabled after Intent Override
     -> candidate coverage/Gini clarification or one broad recovery
        -> per-session answer/decline posterior updates remaining question value
     -> ResponseGuard validates exact ASINs and API shape
@@ -54,6 +57,7 @@ respond(message)
 | Fusion | Weighted Reciprocal Rank Fusion, `k=60` |
 | Reranking | Full bounded union: RRF + IDF/phrase coverage + capped popularity + missing-neutral price range |
 | Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
+| Final list safety | Freeze the selected Top 10, then apply bounded ordering; weak priors cannot change membership |
 | Question selection | Top-50 coverage/Gini × catalog prior × session posterior, plus one broad recovery |
 | Optional semantics | Pre/post retrieval gates + all-field operation schema + process/session caps + cache + local grounding |
 
@@ -90,7 +94,8 @@ Unimplemented alternatives are listed only in [`../TODO.md`](../TODO.md).
 2. Deterministic interpretation and Active State preserve current intent.
 3. Five lexical rank lists feed weighted RRF.
 4. Full-union reranking and exposure control order the final candidates.
-5. Adaptive specific questions and one broad recovery guide later turns.
+5. A membership-preserving orderer improves rank without delaying target hits.
+6. Adaptive specific questions and one broad recovery guide later turns.
 
 A separate typed-attribute candidate route and positive structured reranker were
 tested on the four development folds and rejected. They duplicated existing
