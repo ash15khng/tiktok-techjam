@@ -9,6 +9,7 @@ requiring a network, GPU, or model API. Semantic models remain optional.
 
 ```text
 message + Active State
+    -> catalog-derived attribute/value grounding
     -> deterministic interpretation and override handling
     -> contextual short-answer resolution from the last question
     -> focused/exploratory route weighting
@@ -16,7 +17,7 @@ message + Active State
     -> weighted Reciprocal Rank Fusion
     -> evidence, profile, and capped-popularity reranking
     -> unseen-first ordering, reset when intent changes
-    -> answerability-weighted clarification; one broad recovery after a declined field
+    -> catalog prior + session-posterior clarification; one broad recovery after a decline
     -> explanation and contract validation
 ```
 
@@ -33,6 +34,9 @@ Short answers such as `Nike`, `7`, or `80` inherit brand, size, or budget from
 the immediately preceding structured question. Explicit current evidence still
 wins: `leather` after a color question remains material. Bare `yes` is not added
 as search evidence, while bare `no` suppresses the requested attribute.
+Attribute values are learned from the frozen catalog rather than duplicated in
+material/color/use-case lists. Price partitions use log-space catalog quantiles
+instead of fixed `$25` buckets.
 
 ## Runtime boundaries
 
@@ -67,8 +71,12 @@ The unmodified official evaluator currently reports:
 | MTTC | 9.81 | 2.245 |
 | TechnicalScore | 0.107 | 0.8633 |
 
-These are development-set measurements, not private-set estimates. A 40-request
-local broad-query audit measured 2.45 s startup and 265 ms p95 response latency.
+These are historical full-development-set measurements, not private-set
+estimates or the current tuning loop. New work uses four target/title-family-
+disjoint working folds and a sealed 20% holdout. See
+[evaluation-methodology.md](evaluation-methodology.md). The older 40-request
+audit measured 2.45 s startup and 265 ms p95 before the catalog registry;
+current feasibility measurements and caveats are in [findings.md](findings.md).
 The retained full-union rerank and broad clarification recovery improved recall
 and first-hit turn. First-list ordering remains a tuning target.
 
@@ -96,8 +104,8 @@ new function-tool request is covered only by mocked tests. See
 ## Tuning status
 
 Route weights, candidate depths, the question threshold, and the popularity cap
-are good-enough initial values. They need target-disjoint cross-validation before
-being treated as final parameters.
+are good-enough initial values. They must be changed only through the working
+folds, then checked once on the sealed holdout after configuration freeze.
 
 See [findings.md](findings.md) for measured behavior and [todo.md](todo.md) for
 remaining work and alternatives.

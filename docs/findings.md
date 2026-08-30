@@ -173,7 +173,7 @@ unknown, so currency cost is not reported.
 
 ## Feasibility
 
-A local 40-request audit measured:
+A historical local 40-request audit before the catalog-attribute registry measured:
 
 - catalog startup: 2.45 seconds;
 - mean response: 230 ms;
@@ -181,13 +181,98 @@ A local 40-request audit measured:
 - maximum response: 269 ms.
 - steady process working set after one response: 274 MiB.
 
-The p95 meets the initial 500 ms reliable-path budget in this local broad-query
-audit. This is not an end-to-end judging-machine guarantee; candidate depth and
-rerank depth still need joint recall/latency tuning.
+Those figures are retained as the pre-registry reference. Current measurements
+are recorded in the re-engineering section below; this is not an end-to-end
+judging-machine guarantee.
+
+## 2026-08-30 generalization and split review
+
+The scattered material/color/size/use-case word lists and fixed `$25` price
+buckets were removed. The fixed API attribute names remain because they are the
+organizer contract. Their values now come from one catalog-derived registry.
+
+Catalog observations:
+
+- 279 distinct structured detail keys exist;
+- title and category are present for all 50,000 products;
+- features cover 89.6%, details 96.7%, store 99.4%, description 52.2%, and
+  valid positive price only 21.1%;
+- direct typed keys are sparse: material 2,069 products, color 2,439, style
+  1,752, size 925, sport 260, and occasion 215;
+- catalog price quantiles are approximately `$9.99`, `$14.99`, `$22.88`,
+  `$39.99`, and `$80.00`, so a fixed `$25` partition was poorly matched to the
+  skewed distribution.
+
+Consequences:
+
+- missing fields stay unknown in retrieval, reranking, and questioning;
+- no product is rejected merely because an attribute or price is absent;
+- catalog-native values can be resolved without editing source lists;
+- package dimensions are excluded from wearable-size evidence;
+- exact normalized phrases are preferred, while fuzzy linking remains deferred;
+- the optional LLM is still needed for true open-world paraphrase, metaphor,
+  misspelling, and implicit-need translation.
+
+Clarification now starts from an O(1) prior derived from catalog coverage and
+repeated-value support. Per-session answers, declines, and redirects update a
+Beta-style posterior for the remaining questions, and `reset()` clears it. The
+one-time `other` recovery remains because catalog attributes do not capture every
+customer priority.
+
+The public set is now split into a sealed 40-session holdout and four 40-session
+working folds. Exact normalized-title families cannot cross partitions and every
+partition is scenario-stratified. The current 160-session working-fold checkpoint
+is Hit Rate `0.9875`, MRR `0.632125`, MTTC `2.58125`, and TechnicalScore
+`0.851762`. The sealed holdout was not opened in this pass.
+
+### Retrieval and ranking ablation
+
+The retained implementation already produces five candidate lists—field,
+title, category relevance, category popularity, and focused constraints—then
+combines them with weighted RRF and reranks the bounded union. Two additional
+attribute-aware mechanisms were evaluated and rejected:
+
+| Development variant | Hit Rate | MRR | MTTC | Score | Decision |
+|---|---:|---:|---:|---:|---|
+| Retained five-route system | 0.9875 | 0.632125 | 2.58125 | 0.851762 | Keep |
+| Typed-attribute route only | 0.9750 | 0.612187 | 2.71250 | 0.836906 | Reject |
+| Structured support reranker only | 0.9750 | 0.635813 | 2.68125 | 0.844619 | Reject |
+| Both additions | 0.9750 | 0.624472 | 2.71875 | 0.840467 | Reject |
+
+The new route duplicated terms already present in the constraint generator and
+diffused RRF/exposure ordering. The structured scorer recovered small MRR in a
+few Buying cases but reduced Hit Rate and Intent Override reliability, and its
+product-value inference substantially increased latency. Neither path remains in
+runtime code.
+
+The frozen 14-case consumer-language suite initially kept the same Hit Rate but
+moved one natural intent-correction target from rank 1 to rank 2. Adding general
+`make that <category> with <constraint>` operation parsing restored the previous
+Hit Rate `0.857143`, MRR `0.7375`, and MTTC `1.357143`. No fixture ASIN or product
+term was added to runtime logic.
+
+The optional semantic gate also no longer enumerates adjectives such as
+`comfortable`, `formal`, or `lightweight`. It now escalates substantive turns
+from parser fallback provenance, implicit outcome/reason constructions, missing
+or ambiguous category evidence, and low retrieval stability. Minimum message
+length, exact-top-evidence suppression, the process call cap, cache, and local
+grounding still bound billed use. Because this changes eligibility, the older
+13-call dry-run estimate must be rerun before any paid suite.
+
+Prefix-pruned attribute inference reduced repeated value-matching work. A
+2,000-product equivalence audit found zero output differences from the reference
+longest-first scan after punctuation-sensitive semantics were preserved. Final
+local measurements were 7.81 s startup, 315 ms mean response, 574 ms p95, and
+647 ms maximum over 40 deterministic first turns. Cold start remains under the
+10 s target, but p95 exceeds the provisional 500 ms budget. These figures should
+be rerun on the judging machine; profiling shows the long-tail response cost is
+now dominated by SQLite retrieval and full-union reranking rather than
+clarification lookup.
 
 ## Caveats
 
 The public set has only 200 sessions. Current numeric weights are engineering
-guesses informed by public diagnostics and need target-ASIN-disjoint validation.
+guesses; repeated working-fold choices can still overfit despite target-family
+grouping, which is why the 20% holdout stays sealed until configuration freeze.
 No private-set performance, LLM score gain, production user impact, provider
 cost, or external API reliability is claimed.

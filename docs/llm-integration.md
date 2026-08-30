@@ -106,8 +106,10 @@ are not retried.
 
 The model is considered only after deterministic parsing and first-pass
 retrieval. `SemanticEscalationPolicy` calls it for substantive messages with
-missing or malformed category evidence, or difficult language plus unstable
-retrieval. Exact multi-token evidence in the leading deterministic product
+missing or malformed category evidence, or parser fallback / implicit outcome
+language plus unstable retrieval. It does not maintain a list of subjective
+adjectives: new catalog values stay in the catalog registry, and semantic
+eligibility comes from parse gaps and sentence structure. Exact multi-token evidence in the leading deterministic product
 suppresses a call. Short contextual answers remain deterministic.
 
 An eligible example is:
@@ -152,8 +154,10 @@ grounder rejected those slots. The prompt was then narrowed to request only the
 three accepted soft attributes. No further live call and no paid public-set
 evaluation were run.
 
-A no-network replay of all 200 public sessions found 13 eligible semantic calls
-and 12 unique message/context pairs. This estimates call volume only, not score.
+A historical no-network replay of all 200 public sessions found 13 eligible
+semantic calls and 12 unique message/context pairs. This estimates the former
+lexical gate's call volume only, not score; the current structural gate requires
+a new dry-run volume audit before paid use.
 
 A later paired run sampled 50 public sessions with seed `20260829`. Its dry gate
 selected 2 of 103 parsed turns. Live mode was hard-capped at those 2 provider
@@ -163,7 +167,8 @@ attempts, with no retries: one succeeded, one failed safely, and the run reporte
 session-level hit turn and rank was identical. The current public evidence does
 not justify enabling billed semantics for score. Keep it off by default until a
 curated ambiguity corpus demonstrates retrieval-relevant gains, then consider a
-gate that also requires low deterministic retrieval confidence. Provider pricing
+gate threshold adjustment only through the working folds. The current gate
+already requires low deterministic retrieval stability. Provider pricing
 was not supplied, so monetary cost is not claimed.
 
 ## Hard-language evaluation

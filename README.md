@@ -10,6 +10,7 @@ Project documentation:
 - Full architecture, module boundaries, and five-person workstream map: [`docs/architecture.md`](docs/architecture.md)
 - MVP boundaries and canonical commands: [`docs/mvp.md`](docs/mvp.md)
 - Measured MVP behavior: [`docs/findings.md`](docs/findings.md)
+- Leakage-resistant train/validation/holdout protocol: [`docs/evaluation-methodology.md`](docs/evaluation-methodology.md)
 - Prioritized follow-up work and alternatives: [`docs/todo.md`](docs/todo.md)
 - Optional semantic parser setup and expectations: [`docs/llm-integration.md`](docs/llm-integration.md)
 - Lightweight NLP experiment and decision: [`docs/nlp-evaluation.md`](docs/nlp-evaluation.md)

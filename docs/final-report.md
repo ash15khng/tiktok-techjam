@@ -8,7 +8,7 @@ valid frozen-catalog IDs on every usable turn, asks at most one structured
 question, maintains session state, handles intent corrections, and continues
 without an LLM or network.
 
-Public development-set result from the unmodified evaluator:
+Historical complete-public development result from the unmodified evaluator:
 
 | Metric | Starter | Current MVP |
 |---|---:|---:|
@@ -17,13 +17,16 @@ Public development-set result from the unmodified evaluator:
 | MTTC | 9.81 | 2.245 |
 | TechnicalScore | 0.107 | 0.8633 |
 
-This is a public-set engineering result, not an estimate of the 800 private
-sessions. One of 200 public targets remains unfound.
+This is a historical public-set engineering result, not an estimate of the 800
+private sessions or the current tuning loop. New work uses a sealed 20% holdout
+and four scenario-stratified, target/title-family-disjoint working folds. Their
+locked 160-session score is `0.851762`; the holdout remains unopened.
 
 ## Implemented product
 
 1. The catalog is loaded into immutable product records and a field-aware
-   in-memory SQLite FTS5 index.
+   in-memory SQLite FTS5 index. One catalog-derived registry supplies supported
+   attribute values, metadata priors, and log-quantile price bands.
 2. Deterministic interpretation separates category, constraints, exclusions,
    numeric budget language, corrections, and no-preference replies. Raw catalog
    phrases remain available when normalization is unsafe.
@@ -32,7 +35,8 @@ sessions. One of 200 public targets remains unfound.
    update records explicit, contextual, or fallback provenance.
 4. An optional billed semantic path adds anchored query rewrites and grounded
    soft feature/style/use-case hints. It runs only after deterministic retrieval
-   shows a language/coverage concern. A call cap, cache, strict function tool,
+   shows a language/coverage concern. Eligibility uses parser fallback and
+   sentence structure rather than a fixed adjective list. A call cap, cache, strict function tool,
    local validation, and deterministic fallback bound its risk.
 5. Active State stores only currently valid session evidence; the anonymized
    profile is a capped soft prior.
@@ -43,7 +47,8 @@ sessions. One of 200 public targets remains unfound.
    volume, profile overlap, exclusions, and missing-neutral price bounds.
 8. Previously shown products move behind unseen alternatives after rejection.
    Exposure resets on Intent Override.
-9. Clarification uses top-candidate coverage and diversity. After an unanswered
+9. Clarification uses top-candidate coverage, diversity, a catalog-derived
+   prior, and session-specific answer/decline observations. After an unanswered
    field, one broad recovery question lets the customer volunteer a priority.
 10. `ResponseGuard` removes invalid/duplicate IDs, caps the list at ten, and
    preserves valid output under component failure.
@@ -89,15 +94,19 @@ change; five calls completed, three failed, and 3,385 tokens were reported acros
 completed responses. The subsequent forced function-tool contract is mocked but
 not live-validated.
 
-Local Windows measurements on a 40-request broad-query audit:
+The original pre-registry Windows audit measured 2.45 s startup and 265 ms p95.
+The current 40-request first-turn audit measured:
 
-- catalog startup: 2.45 s;
-- mean response: 230 ms;
-- p95 response: 265 ms;
-- maximum response: 269 ms;
-- steady process working set after load and one response: about 274 MiB.
+- catalog startup: 7.81 s;
+- mean response: 315 ms;
+- p95 response: 574 ms;
+- maximum response: 647 ms.
 
-These meet the provisional 500 ms / 500 MiB reliable-path budgets locally, but
+Cold start remains below the provisional 10-second target; p95 is now about
+74 ms above the provisional 500 ms target. A prefix-pruned attribute matcher
+reduced matching work without changing its reference output, but profiles show
+the remaining slow path is mainly SQLite retrieval and full-union reranking.
+Depth reductions require a candidate-recall ablation. Memory and all timings
 must be repeated on the organizer's machine.
 
 ## User-interaction considerations
@@ -112,6 +121,8 @@ must be repeated on the organizer's machine.
   unless the customer explicitly changes it.
 - Short replies such as `Nike`, `7`, `80`, `blue/`, and bare `no` are grounded
   by the last Clarification without overriding explicit current evidence.
+- Attribute values are catalog-derived rather than copied into material, color,
+  size, style, brand, or use-case regex lists. Missing values stay unknown.
 - Subjective needs can receive LLM rewrites, but only anchored rewrites and
   grounded soft slots reach retrieval. Unsupported inferences are discarded and
   the deterministic path remains complete.
@@ -123,7 +134,7 @@ coverage, unseen-first exposure, and reranking the complete bounded union. A
 category-popularity route improved recall and time-to-hit but initially reduced
 MRR, demonstrating that coverage and first-list precision must be tuned jointly.
 
-Three rejected experiments are important:
+Four rejected experiments are important:
 
 - exposure without reset collapsed Override performance because feedback under
   the old intent was treated as permanent;
@@ -132,15 +143,18 @@ Three rejected experiments are important:
 - spaCy with a small trained English model added substantial footprint and
   generic syntax but did not resolve shopping-specific short-answer semantics;
   it was tested locally, documented, and removed.
+- a separate typed-attribute candidate generator lowered working-fold score
+  from `0.851762` to `0.836906`; a structured-evidence reranker scored
+  `0.844619`. Both duplicated existing constraint evidence and added latency,
+  so neither remains in runtime code.
 
 The first live LLM output also showed why grounding is necessary: it proposed
 plausible category, material, and color values that were not explicitly stated.
 Those slots were rejected while its two useful anchored rewrites were retained.
 
-The remaining public miss is a low-volume novelty item in a large tie group.
+The remaining historical public miss is a low-volume novelty item in a large tie group.
 Directly boosting it would overfit. A defensible next experiment is a
-target-blind long-tail/diversity generator evaluated with target-ASIN-disjoint
-folds.
+   target-blind long-tail/diversity generator evaluated with the working folds.
 
 ## Before submission
 
@@ -150,8 +164,9 @@ folds.
 4. Obtain provider pricing and validate the new forced function-tool request with
    one capped smoke call before any further paid suite. Keep semantics disabled
    by default until a live run accepts grounded hints and improves a hard case.
-5. Freeze configuration after target-disjoint validation; do not tune to the one
-   remaining public ASIN.
+5. Freeze configuration, evaluate the sealed holdout once, then perform one
+   complete-public compatibility replay. Do not tune after the holdout result or
+   to the one remaining historical public ASIN.
 6. Rehearse the two-turn demo described in [interaction-examples.md](interaction-examples.md).
 
 Detailed experiments are in [findings.md](findings.md); prioritized work and

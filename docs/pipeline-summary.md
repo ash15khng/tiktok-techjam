@@ -12,6 +12,8 @@ Find the exact hidden catalog `parent_asin` in the Top 10, at the highest rank a
     -> validate non-empty unique ASINs while loading
     -> normalized searchable views without inventing missing values
     -> product map + SQLite FTS5 + vocabulary frequencies
+    -> catalog-derived attribute values + answerability priors
+    -> log-quantile price bands; missing price remains unknown
 
 reset(profile)
     -> copied soft Customer Profile
@@ -32,6 +34,7 @@ respond(message)
        -> one reretrieval only when accepted evidence changes state
     -> unseen-first Recommendation Exposure control
     -> candidate coverage/Gini clarification or one broad recovery
+       -> per-session answer/decline posterior updates remaining question value
     -> ResponseGuard validates exact ASINs and API shape
 ```
 
@@ -41,7 +44,7 @@ respond(message)
 |---|---|
 | Text normalization | Unicode NFKC, casefolded lookup views, raw-text preservation |
 | Operation parsing | Rules for correction, payload, exclusion, and no-preference language |
-| Short replies | Explicit evidence first; immediate question context second; bounded fallback |
+| Attributes and short replies | Fixed API schema, catalog-derived value registry; explicit evidence first; immediate question context second |
 | Lexical retrieval | SQLite FTS5 BM25 with field weights |
 | Broad-category coverage | Shared 800-item category pool, ranked separately by BM25 and rating count |
 | Route control | Heuristic `focus_score`; all cheap generators still run |
@@ -49,7 +52,7 @@ respond(message)
 | Fusion | Weighted Reciprocal Rank Fusion, `k=60` |
 | Reranking | Full bounded union: RRF + IDF/phrase coverage + capped popularity + missing-neutral price range |
 | Across-turn novelty | Stable unseen-first partition with reset on Intent Override |
-| Question selection | Top-50 coverage/Gini partition value plus one broad unanswered-question recovery |
+| Question selection | Top-50 coverage/Gini × catalog prior × session posterior, plus one broad recovery |
 | Optional semantics | Two-pass escalation + strict function tool + cap/cache + local grounding |
 
 ## Chosen technologies
@@ -70,6 +73,7 @@ alternatives.
 - `RetrievalAssessment` describes generator coherence, not customer intent.
 - the interpreter proposes events; only `StateReducer` changes active state.
 - missing product metadata is `unknown`, never contradiction.
+- catalog values generalize beyond code word lists, but remain closed to the frozen catalog; the optional LLM handles true language gaps.
 - raw feature text remains searchable even when it cannot be safely normalized.
 - an Intent Override deactivates stale values before retrieval.
 - an Intent Override resets Recommendation Exposure because earlier rejection used a different need.
@@ -86,6 +90,12 @@ alternatives.
 6. Add tri-state structured constraints, dense retrieval, or model reranking only
    for a measured remaining failure. **Deferred.**
 
+A separate typed-attribute candidate route and positive structured reranker were
+tested on the four development folds and rejected. They duplicated existing
+constraint evidence, lowered the score, and increased latency. The retained
+system already fuses five independently weighted candidate lists before a
+feature-based reranker.
+
 ## Evaluation order
 
 1. candidate target recall at 10/50/100/300;
@@ -94,6 +104,10 @@ alternatives.
 4. MTTC and hit-turn distribution;
 5. Buying, Browsing, Override, and Boundary regressions;
 6. latency, memory, tokens, cost, and fallback rate.
+
+The public-development protocol uses a sealed 20% holdout plus four
+scenario-stratified, target/title-family-disjoint working folds. See
+[evaluation-methodology.md](evaluation-methodology.md).
 
 Published starter: Hit Rate@10 `0.125`, MRR `0.068034`, MTTC `9.81`.
 

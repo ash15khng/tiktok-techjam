@@ -67,6 +67,7 @@ reset(session_id, user_profile)
     -> create isolated SessionState
 
 respond(session_id, message, turn, top_k)
+    -> CatalogAttributeRegistry supplies catalog-native values and questions
     -> MessageInterpreter.parse_deterministic(message, last question)
     -> ContextualReplyResolver: explicit evidence > immediate question > fallback
     -> StateReducer.apply(IntentFrame)
@@ -112,6 +113,7 @@ shopping_copilot/
 |-- contracts.py                     Protocols and ResponseGuard
 |
 |-- catalog/
+|   |-- attributes.py                Contract schema + catalog-derived values
 |   |-- models.py                    ProductRecord and search-result types
 |   |-- normalization.py             Text and value normalization
 |   `-- store.py                     Product map, FTS5, vocabulary, popularity
@@ -171,12 +173,14 @@ class ProductRecord:
     price: float | None
     average_rating: float | None
     rating_number: int
+    detail_pairs: tuple[tuple[str, str], ...]
 ```
 
 Missing product data remains absent. It is never converted into the strings `unknown`, `none`, or `null` and never treated as a contradiction.
 
-Ranged prices, typed attribute evidence, extraction confidence, and explicit
-field-presence tracking are planned extensions rather than current contracts.
+Raw structured detail pairs are retained for typed attribute extraction while
+the flattened `details` tuple remains available to FTS. Ranged catalog prices,
+extraction confidence, and explicit field-presence tracking remain extensions.
 
 ### 5.2 Current understanding contracts
 
@@ -243,6 +247,7 @@ class SessionState:
     session_id: str
     customer_profile: dict
     active: ActiveState
+    clarification_outcomes: dict[str, str]
     last_ask_attribute: str | None
     last_recommendations: tuple[str, ...]
     recommendation_exposure: set[str]
@@ -319,32 +324,40 @@ Text normalization uses:
 
 Do not stem brand names, sizes, model tokens, or product codes. Units are normalized through explicit rules, for example `in`, `inch`, and `inches` to an inch unit while retaining the numeric value.
 
-### 6.3 Deferred structured attribute extraction
+### 6.3 Catalog-derived attribute registry
 
-Structured `details` keys are normalized through an alias table:
+The API attribute names are fixed by the organizer contract. Product values are
+not hardcoded. `CatalogAttributeRegistry` derives them from category paths,
+store/brand, feature text, and normalized structured-detail keys. The mapping is
+declared once in `catalog/attributes.py`; interpreter and question policy share
+the same registry.
 
 ```text
-material aliases -> material, fabric type, fabric
-color aliases    -> color, colour
-size aliases     -> size, item size, shoe size
-style aliases    -> style, fit type, closure type, sleeve type
-brand aliases    -> brand, manufacturer
+material <- material, fabric, metal type
+color    <- color, colour
+size     <- size, excluding package/screen/file dimensions
+style    <- style, pattern, fit, neck, sleeve, closure, shape, theme
+use_case <- sport, occasion, recommended/specific uses, lifestyle
+brand    <- store, brand, brand name
+category <- category path
+budget   <- valid positive catalog prices
+feature  <- bounded feature vocabulary
 ```
 
-The current store preserves flattened `details` text but does not build this
-typed attribute layer. A future `CatalogAttributeExtractor` may also scan title,
-features, description, categories, and store with high-precision lexicons and
-record each value's source field and extraction method.
+For message resolution, the registry indexes normalized catalog phrases and
+prefers longer supported matches. The previous question is only a bounded
+contextual tie-break for short replies; explicit current cues win. For candidate
+partitioning, a prefix-pruned matcher infers supported values from product text
+while producing the same longest-first order as the reference scan.
 
-The catalog-derived value lexicon is implemented as a token trie:
+This is catalog generalization, not open-world understanding: a value absent
+from the frozen catalog may remain unresolved. Difficult subjective or implicit
+language is the optional LLM translator's narrow responsibility.
 
-- insert normalized multi-token aliases;
-- scan messages and product text left-to-right;
-- prefer the longest match at a start position;
-- retain overlapping matches only when their attributes differ;
-- restrict ambiguous aliases using the current category when available.
-
-A custom trie avoids a required native `pyahocorasick` dependency and is adequate for this catalog size.
+The registry also computes O(1) metadata-coverage answerability priors and five
+log-space price quantiles. On the frozen catalog the boundaries are approximately
+`$9.99`, `$14.99`, `$22.88`, `$39.99`, and `$80.00`; a missing price stays
+unknown rather than entering a bucket.
 
 ### 6.4 SQLite FTS5
 
@@ -386,11 +399,12 @@ products: dict[str, ProductRecord]
 valid_ids: frozenset[str]
 products_vocab: SQLite fts5vocab table
 popular_ids: tuple[str, ...]
+attributes: CatalogAttributeRegistry
 ```
 
-The FTS vocabulary supplies document frequencies and IDF. Explicit category
-and attribute-to-ID maps remain a deferred optimization; products with missing
-fields remain accessible through the lexical generators.
+The FTS vocabulary supplies document frequencies and IDF. The attribute
+registry is evidence, not a hard filter: products with missing fields remain
+accessible through every lexical generator.
 
 ## 7. MessageInterpreter
 
@@ -460,11 +474,13 @@ Single-digit numeric tokens remain searchable so shoe size `7` is not removed as
 noise. Every `SlotUpdate` records `source` as `explicit`, `contextual`, or
 `fallback`.
 
-### 7.4 Deferred catalog entity linking
+### 7.4 Catalog grounding and deferred fuzzy linking
 
-Catalog-derived aliases and fuzzy normalization are not implemented in the
-current MVP. A future linker may compare unmatched spans only with values from
-the inferred category and attribute using:
+Exact normalized catalog-value grounding is implemented by
+`CatalogAttributeRegistry`. Fuzzy normalization is intentionally deferred
+because unrestricted edit-distance matching can turn misspellings into the
+wrong brand or size. A future linker may compare unmatched spans only with
+values from the inferred category and attribute using:
 
 ```text
 link_score =
@@ -499,7 +515,9 @@ The optional semantic adapter separately caps model-proposed confidence at
 
 The agent first parses and retrieves deterministically. `SemanticEscalationPolicy`
 then considers substantive messages with missing or malformed category evidence,
-or difficult language combined with low Top-10 stability. An exact multi-token
+or unresolved fallback spans / implicit outcome language combined with low
+Top-10 stability. The gate uses language structure and parser provenance rather
+than a fixed adjective or product-value list. An exact multi-token
 preference phrase in the leading deterministic product suppresses a call even
 when generator overlap is low. Short answers remain contextual and never
 escalate. These thresholds are initial engineering guesses and require more
@@ -901,25 +919,36 @@ confidence = min(1,
 QuestionValue(A) =
     coverage(A)
   * partition_gini(A)
-  * answerability_prior(A)
+  * session_answerability(A)
   * (1 - confidence)
 ```
 
 The highest value above `0.08` is asked, with an exception after explicit
 negative feedback so the agent can continue recovery. There is no generic MTTC
 penalty for an ask-and-recommend response. The relevant cost is receiving an
-uninformative answer instead of a better clarification. Posterior-weighted
-answer simulation remains a deferred alternative, not current behavior.
+uninformative answer instead of a better clarification.
 
 ### 14.3 Answerability and fallback
 
-Candidate coverage is the primary answerability signal. The initial configurable tie-break order is:
+Candidate coverage is the primary answerability signal. The deterministic
+tie-break order is:
 
 ```text
 feature, material, color, style, size, use_case, budget, brand, category
 ```
 
-This prior comes from released-data diagnostics and must be compared with candidate-only ordering. It never inspects a target at runtime.
+The baseline prior is computed once from catalog metadata coverage and repeated
+value support; there is no per-attribute constant table. `SessionState` records
+whether each previous specific question was answered, declined, or redirected.
+A Beta-style posterior blends those outcomes with prior strength `3.0`, so a
+cooperative customer raises the value of remaining questions while declines
+lower it. `reset()` creates a fresh posterior for the next customer. Neither the
+prior nor the update inspects a target at runtime.
+
+```text
+session_answerability = (3 * catalog_prior + answered)
+                      / (3 + answered + declined_or_redirected)
+```
 
 If the previous specific question was declined or had no additional preference,
 ask `other` once before resuming specific partitions. This lets the customer
@@ -1063,7 +1092,13 @@ Official outcomes are Hit Rate@10, MRR, MTTC, Efficiency, TechnicalScore, and sc
 
 ### 19.2 Development split
 
-Use target-ASIN-disjoint five-fold evaluation. Any learned or calibrated weight is fit on four folds and evaluated on the fifth. Report aggregate out-of-fold results before a final full-public-set demonstration.
+Treat the 200 public sessions as development data. The implemented protocol
+reserves a sealed 20% holdout, then creates four scenario-stratified folds from
+the remaining 80%. Exact normalized-title product families are grouped, with
+target ASIN as fallback, so near-duplicate product records cannot cross a
+partition. Learned parameters train on three working folds and validate on the
+fourth. Heuristic ablations use the same four folds and must not inspect the
+sealed holdout. See [evaluation-methodology.md](evaluation-methodology.md).
 
 ### 19.3 Experiment order
 
@@ -1073,7 +1108,7 @@ Use target-ASIN-disjoint five-fold evaluation. Any learned or calibrated weight 
 | E1 | CatalogStore with equivalent FTS | Must reproduce baseline |
 | E2 | Stateful raw-message control | Diagnostic only; exposes simulator sensitivity |
 | E3 | Typed interpreter and reducer | Keep if Override/Boundary correctness improves |
-| E4 | Title + field + attribute generators | Keep sources with positive marginal recall |
+| E4 | Title + field + category + category-popularity + constraint generators | Keep sources with positive marginal recall |
 | E5 | Uniform RRF | Multi-generator baseline |
 | E6 | Constraint reranker | Keep if MRR improves without recall regression |
 | E7 | Heuristic focus-score blending | Compare with uniform and hard switching |
@@ -1123,15 +1158,22 @@ Implement domain types, deterministic rules, catalog grounding, `SessionStore`, 
 
 ### Slice 3: multi-generator retrieval
 
-Implement title FTS, attribute retrieval, uniform RRF, and candidate-recall diagnostics. Keep optional models disabled.
+The five lexical routes and weighted RRF are implemented. A separate typed
+attribute route was tested and rejected: it duplicated constraint evidence,
+diffused the candidate union, regressed development score, and added latency.
+Keep optional models disabled by default.
 
 ### Slice 4: assessment and reranking
 
-Implement `NeedAssessor`, `RetrievalAssessor`, tri-state constraints, lightweight reranking, CandidateBelief, and Top10Confidence.
+Generator-overlap assessment and the lightweight full-union reranker are
+implemented. Rich tri-state constraints, learned candidate belief, and
+calibrated Top-10 confidence remain deferred.
 
 ### Slice 5: clarification policy
 
-Implement posterior-weighted partitioning, answerability checks, `other` fallback, and Boundary suppression. Compare fixed and adaptive policies.
+Catalog-derived partitions, session-updated answerability, `other` recovery,
+and Boundary suppression are implemented. Further threshold tuning must use the
+working folds and preserve the sealed holdout.
 
 ### Slice 6: retrieval-aware semantic stages
 

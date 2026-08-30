@@ -23,6 +23,7 @@ paths are labelled so they are not mistaken for the reliable default path.
 ```mermaid
 flowchart LR
     Catalog[(Frozen 50k-product<br/>catalog JSONL)] --> CatalogStore[CatalogStore<br/>records + SQLite FTS5]
+    CatalogStore --> Registry[CatalogAttributeRegistry<br/>values + priors + price quantiles]
     PublicSet[(Public sessions)] --> Evaluator[Local evaluator]
 
     Evaluator -->|reset with profile| SessionStore[SessionStore]
@@ -36,6 +37,7 @@ flowchart LR
     Active --> Planner[RetrievalPlanner]
     Planner --> Generators[Five lexical generators]
     CatalogStore --> Generators
+    Registry --> Interpreter
     Generators --> Fusion[Weighted RRF]
     Fusion --> Assessment[RetrievalAssessment]
     Fusion --> Reranker[LightweightReranker]
@@ -47,6 +49,7 @@ flowchart LR
 
     Reranker --> Exposure[Unseen-first exposure]
     Exposure --> Question[QuestionPolicy]
+    Registry --> Question
     Assessment --> Question
     Question --> Guard[ResponseGuard]
     Exposure --> Guard
@@ -82,6 +85,12 @@ flowchart TD
     F3 --> H
     H --> I[(FTS5 vocabulary<br/>document frequencies)]
     F4 --> J[(Popularity ordering)]
+    F3 --> O[CatalogAttributeRegistry]
+    F2 --> O
+    F4 --> O
+    O --> O1[Catalog-native value phrases]
+    O --> O2[Metadata answerability priors]
+    O --> O3[Log-quantile price bands]
 
     G --> K[Exact ID validation and metadata lookup]
     H --> L[BM25 candidate search]
@@ -114,6 +123,7 @@ classDiagram
         recommendation_exposure
         turn_count
         last_feedback_negative
+        clarification_outcomes
     }
     class ActiveState {
         category_phrases
@@ -247,9 +257,10 @@ flowchart TD
     F --> H
     G --> H
     H --> I[Resolve each phrase]
+    R[(Catalog-derived values)] --> I
 
     I --> J{Current words identify<br/>an attribute?}
-    J -->|yes| K[Explicit attribute wins]
+    J -->|yes| K[Explicit cue or catalog value wins]
     J -->|no, short reply| L[Use immediately preceding ask_attribute]
     J -->|no usable context| M[Conservative feature fallback]
     I --> N{Bare decline?}
@@ -277,7 +288,8 @@ provenance.
 
 ```mermaid
 flowchart TD
-    A[IntentFrame] --> B{Override?}
+    A[IntentFrame] --> A1[Record prior question as<br/>answered, declined, or redirected]
+    A1 --> B{Override?}
     B -->|no| G[Apply updates]
     B -->|yes| C[Clear recommendation exposure]
     C --> D{New category supplied?}
@@ -422,7 +434,7 @@ flowchart TD
     E -->|yes| Z
     E -->|no| F{Ambiguous category and<br/>stability below 0.40?}
     F -->|yes| H
-    F -->|no| G{Difficult or implicit language and<br/>stability below 0.12?}
+    F -->|no| G{Fallback or implicit language and<br/>stability below 0.12?}
     G -->|no| Z
     G -->|yes| H
 
@@ -467,10 +479,13 @@ flowchart TD
     F --> G[For each available attribute,<br/>group candidate values]
     G --> H[Coverage]
     G --> I[Gini-style diversity]
-    G --> J[Answerability prior]
+    G --> J[Catalog answerability prior]
+    A --> J1[Session clarification outcomes]
+    J --> J2[Beta-style posterior]
+    J1 --> J2
     H --> K[Question value]
     I --> K
-    J --> K
+    J2 --> K
     C --> K
 
     K --> L{Best value at least 0.08<br/>or negative feedback?}
@@ -478,6 +493,10 @@ flowchart TD
     L -->|no| N{Broad other unused and<br/>confidence below 0.92?}
     N -->|yes| O[Ask broad other<br/>and recommend]
     N -->|no| Z
+    E --> P[QuestionDecision]
+    M --> P
+    O --> P
+    Z --> P
 ```
 
 Implemented confidence and value are target-blind heuristics:
@@ -488,14 +507,16 @@ confidence = 0.55 × top10_stability
 
 question_value(attribute) = coverage
                           × diversity
-                          × answerability_prior
+                          × session_answerability_posterior
                           × (1 - confidence)
 ```
 
 Already asked or explicitly declined attributes are unavailable. The one-time
 `other` recovery avoids a field-by-field interview and lets the customer name a
 priority the catalog taxonomy did not anticipate. Recommendations are still
-returned while a question is asked.
+returned while a question is asked. Baselines come from frozen-catalog coverage
+and repeated-value support; answers and declines update only the current
+session, and `reset()` clears those observations.
 
 ## 11. Explanation, output guard, and fallback
 
@@ -565,7 +586,38 @@ Efficiency = clip((11 - MTTC) / 10, 0, 1)
 TechnicalScore = 0.50 × HitRate@10 + 0.30 × MRR + 0.20 × Efficiency
 ```
 
-## 13. Failure-containment view
+## 13. Development split and release gate
+
+```mermaid
+flowchart TD
+    A[200 labeled public sessions] --> B[Group target ASINs and<br/>exact normalized-title families]
+    B --> C[Scenario-stratified deterministic assignment]
+    C --> D[40-session sealed holdout]
+    C --> E[160 working sessions]
+    E --> E1[Fold 0: 40]
+    E --> E2[Fold 1: 40]
+    E --> E3[Fold 2: 40]
+    E --> E4[Fold 3: 40]
+
+    E1 --> F[Repeated development ablations]
+    E2 --> F
+    E3 --> F
+    E4 --> F
+    F --> G{Code, score, scenarios,<br/>hard language, latency pass?}
+    G -->|no| H[Revise or reject]
+    G -->|yes and configuration frozen| I[Open sealed holdout once]
+    D --> I
+    I --> J[One complete-public compatibility replay]
+    J --> K[Submit for 800-session private evaluation]
+```
+
+Every 40-session partition contains 16 Buying, 16 Browsing, 6 Intent Override,
+and 2 Boundary sessions. Neither a sample nor a target/title family crosses a
+partition. Catalog-only statistics may use all 50,000 products because the
+catalog is legal runtime input; labels and evaluator-generated intent remain
+offline only. See [evaluation-methodology.md](evaluation-methodology.md).
+
+## 14. Failure-containment view
 
 ```mermaid
 flowchart LR
