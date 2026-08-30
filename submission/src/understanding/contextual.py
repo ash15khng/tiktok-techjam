@@ -17,6 +17,7 @@ from submission.src.understanding.models import Attribute
 BARE_DECLINES = frozenset(
     (
         "no",
+        "nah",
         "nope",
         "none",
         "any",
@@ -29,10 +30,10 @@ BARE_DECLINES = frozenset(
         "don't care",
     )
 )
-BARE_AFFIRMATIONS = frozenset(("yes", "yeah", "yep", "sure", "okay", "ok"))
-# Raising these limits applies previous-question context to longer replies and
-# increases wrong-slot risk; lowering them rejects useful terse phrases. Eight
-# tokens/100 characters cover the hard-language reply suite; no sweep is claimed.
+BARE_AFFIRMATIONS = frozenset(("yes", "yea", "ye", "yeah", "yep", "yup", "sure", "okay", "ok", "k"))
+# Raising these limits applies previous-question context to longer replies and increases wrong-slot risk; 
+# lowering them rejects useful terse phrases. 
+# Eight tokens/100 characters cover the hard-language reply suite; lack of testing done.
 SHORT_REPLY_MAX_TOKENS = 8
 SHORT_REPLY_MAX_CHARS = 100
 WHITESPACE_RE = re.compile(r"\s+")

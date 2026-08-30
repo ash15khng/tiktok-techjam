@@ -27,10 +27,10 @@ class LexicalRetriever:
         active: ActiveState,
         plan: RetrievalPlan,
     ) -> dict[str, list[CatalogSearchResult]]:
-        """Return generator-name to best-first catalog results.
+        """
+        parallel searches across five generator routes (Constraint Route, Field Route, Title Route, Category Route, Popularity Route) to produce candidate lists for each route.
 
-        Explicit constraints first use AND retrieval and fall back to OR only
-        when the strict route is empty. Missing fields never exclude a product.
+        search uses AND retrieval and fall back to OR only when the strict route is empty, to prevent exclusion due to missing attributes.
         """
 
         query_terms = active.query_terms()[: self.config.max_query_terms]
@@ -38,18 +38,21 @@ class LexicalRetriever:
         preference_terms = active.preference_terms()[: self.config.max_query_terms]
         focused_terms = self.store.rare_terms(preference_terms, self.config.max_focused_terms)
 
-        constraint = self.store.search(
+        # constraint route generator
+        constraint = self.store.search( # strict AND search for all constraints
             focused_terms,
             weights=CONSTRAINT_WEIGHTS,
             limit=plan.generator_limit,
             require_all=True,
         )
-        if not constraint and focused_terms:
+        if not constraint and focused_terms: # fallback to OR search if no strict matches found
             constraint = self.store.search(
                 focused_terms,
                 weights=CONSTRAINT_WEIGHTS,
                 limit=plan.generator_limit,
             )
+
+        # searches by category_terms
         category_pool = self.store.search(
             category_terms,
             weights=CATEGORY_WEIGHTS,
@@ -62,7 +65,8 @@ class LexicalRetriever:
                 weights=CATEGORY_WEIGHTS,
                 limit=max(plan.generator_limit, self.config.category_pool_depth),
             )
-        category_popular = sorted(
+
+        category_popular = sorted( # category_pool sorted by popularity, and cut back to generator limit
             category_pool,
             key=lambda result: (
                 -self.store.get(result.parent_asin).rating_number,
@@ -71,12 +75,12 @@ class LexicalRetriever:
             ),
         )[: plan.generator_limit]
         return {
-            "field": self.store.search(
+            "field": self.store.search( # search if query terms are in any field
                 query_terms,
                 weights=FIELD_WEIGHTS,
                 limit=plan.generator_limit,
             ),
-            "title": self.store.search(
+            "title": self.store.search( # search if category terms or query terms are in title
                 category_terms or query_terms,
                 weights=TITLE_WEIGHTS,
                 limit=plan.generator_limit,

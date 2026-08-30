@@ -17,7 +17,7 @@ def reciprocal_rank_fusion(
     *,
     k: int,
 ) -> list[CandidateEvidence]:
-    """Return candidates ordered by weighted Reciprocal Rank Fusion score."""
+    """Merge candidate lists from multiple generators using Weighted Reciprocal Rank Fusion."""
 
     evidence_by_id: dict[str, CandidateEvidence] = {}
     for generator, results in generator_results.items():
@@ -43,9 +43,10 @@ def assess_results(
     overlap_depth: int,
     stability_scale: float,
 ) -> RetrievalAssessment:
-    """Summarize candidate count and pairwise top-list overlap.
+    """
+    Summarize candidate count and pairwise top-list overlap.
 
-    ``top10_stability`` is a control signal, not a calibrated probability.
+    ``top10_stability`` measure of how much top results from routes overlap
     ``overlap_depth`` and ``stability_scale`` come from :class:`AgentConfig`.
     """
 

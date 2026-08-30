@@ -9,14 +9,14 @@ from submission.src.catalog.normalization import tokenize
 
 @dataclass
 class ActiveState:
-    """Reduced current intent after all corrections and overrides are applied."""
+    """Best guess of the user's intent based on the session's evidence so far."""
 
-    category_phrases: list[str] = field(default_factory=list)
-    preference_phrases: list[str] = field(default_factory=list)
-    exclusions: list[str] = field(default_factory=list)
-    slot_values: dict[str, list[str]] = field(default_factory=dict)
-    suppressed_attributes: set[str] = field(default_factory=set)
-    asked_attributes: list[str] = field(default_factory=list)
+    category_phrases: list[str] = field(default_factory=list) # e.g. ["running shoes", "sneakers"]
+    preference_phrases: list[str] = field(default_factory=list) # e.g. ["red", "Nike", "size 10"]
+    exclusions: list[str] = field(default_factory=list) # e.g. ["no leather", "not black"]
+    slot_values: dict[str, list[str]] = field(default_factory=dict) # e.g. {"color": ["red", "blue"], "size": ["10"]}
+    suppressed_attributes: set[str] = field(default_factory=set) # e.g. {"brand", "budget"}
+    asked_attributes: list[str] = field(default_factory=list) # e.g. ["color", "size"]
 
     def category_terms(self) -> tuple[str, ...]:
         return tuple(
@@ -57,11 +57,11 @@ class ActiveState:
 
 @dataclass
 class SessionState:
-    """All mutable state isolated to one evaluator session."""
+    """Stores session data for user interaction."""
 
     session_id: str
     customer_profile: dict
-    active: ActiveState = field(default_factory=ActiveState)
+    active: ActiveState = field(default_factory=ActiveState) # stores what system knows about the user's intent
     last_ask_attribute: str | None = None
     last_recommendations: tuple[str, ...] = ()
     recommendation_exposure: set[str] = field(default_factory=set)
@@ -70,7 +70,8 @@ class SessionState:
     clarification_outcomes: dict[str, str] = field(default_factory=dict)
 
     def answerability_posterior(self, prior: float, *, strength: float) -> float:
-        """Return the catalog prior updated by this session's replies.
+        """
+        Return the catalog prior updated by this session's replies.
 
         Input ``prior`` and ``strength`` are in ``[0, 1]`` and positive pseudo-
         observation units respectively. The output is an answerability control

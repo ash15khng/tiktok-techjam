@@ -16,7 +16,11 @@ class RetrievalPlanner:
         self.config = config
 
     def plan(self, active: ActiveState) -> RetrievalPlan:
-        """Return route weights for one immutable snapshot of active state."""
+        """
+        Return route weights for one snapshot of active state.
+        This is how we influence results from buying/browsing behaviour.
+        Those browsing would likely have less hard evidence and more exploratory queries, while those buying would have more hard evidence and more focused queries.
+        """
 
         hard_evidence = len(active.preference_phrases) + len(active.exclusions)
         category_evidence = int(bool(active.category_phrases))
@@ -25,7 +29,7 @@ class RetrievalPlanner:
             + self.config.focus_preference_weight * hard_evidence
             + self.config.focus_category_weight * category_evidence
         )
-        focus_score = 1.0 / (1.0 + math.exp(-z))
+        focus_score = 1.0 / (1.0 + math.exp(-z)) # 0 is browsing, 1 is buying with strict constriants
         focused = dict(self.config.focused_route_weights)
         exploratory = dict(self.config.exploratory_route_weights)
         weights = {

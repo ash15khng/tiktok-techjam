@@ -106,7 +106,8 @@ SEMANTIC_SCHEMA = {
 
 SEMANTIC_TOOL_NAME = "submit_catalog_search_interpretation"
 
-INSTRUCTIONS = """Translate difficult customer shopping language into catalog search terms.
+INSTRUCTIONS = """
+Translate difficult customer shopping language into catalog search terms.
 Call submit_catalog_search_interpretation exactly once. Produce 1 or 2 short
 query rewrites, at most 3 needs, and at most 4 hypotheses.
 

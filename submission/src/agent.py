@@ -1,8 +1,19 @@
-"""Coordinate one complete shopping turn from message to recommendations.
+"""
+Inputs:
+    As per competition defined in submission_rules.md:
+    - Agent(catalog_path: str | Path = "data/catalog.jsonl") -> None:
+        - Note competition specification does not have a catalog_path argument, so we provide a default path to the catalog file.
+    - reset(self, session_id: str, user_profile: dict) -> None:
+    - respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
 
-Input is the frozen catalog plus organizer ``reset``/``respond`` calls. Output is
-always passed through :class:`ResponseGuard` so component errors cannot emit an
-invalid attribute or an identifier outside the catalog.
+Outputs:
+    respond():
+        dict {
+            "message": user facing message,
+            "ask_attribute": AnyOf["category", "material", "color", "size", "style", "brand", "budget", "feature", "use_case", "other"],
+            "recommendations": [{"parent_asin": "B000..."}] [up to 10],
+            "usage": {"prompt_tokens": int, "completion_tokens": int} (nullable if no usage)
+        }
 """
 
 from __future__ import annotations
@@ -30,7 +41,6 @@ from submission.src.understanding.semantic import semantic_parser_from_environme
 
 
 class ShoppingAgent:
-    """Offline-first shopping agent with an optional grounded semantic parser."""
 
     def __init__(
         self,
@@ -58,8 +68,7 @@ class ShoppingAgent:
         self.guard = ResponseGuard(self.catalog.valid_ids, self.catalog.popular)
 
     def reset(self, session_id: str, user_profile: dict) -> None:
-        """Create fresh mutable state for one evaluator session."""
-
+        """Create fresh mutable state for session."""
         self.sessions.reset(session_id, user_profile)
 
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
@@ -67,14 +76,16 @@ class ShoppingAgent:
 
         state = self.sessions.get(session_id)
         try:
+            # parse user message to obtain attribute phrases, preference phrases, exclusions, intent overrides, negative feedback, or no preference answers
             frame = self.interpreter.parse_deterministic(
                 user_message,
                 last_ask_attribute=state.last_ask_attribute,
             )
-            self.reducer.apply(state, frame)
-            assessment, ranked = self._retrieve_and_rank(state)
+
+            self.reducer.apply(state, frame) # update session state
+            assessment, ranked = self._retrieve_and_rank(state) # get ranked candidates
             if not isinstance(self.semantic_parser, DisabledSemanticParser):
-                decision = self.semantic_escalation.decide(
+                decision = self.semantic_escalation.decide( # decide if llm is needed
                     frame,
                     state.active,
                     assessment,
@@ -89,8 +100,8 @@ class ShoppingAgent:
                     applied = self.reducer.apply_semantic(state, frame)
                     self.semantic_escalation.record_outcome(applied=applied)
                     if applied:
-                        assessment, ranked = self._retrieve_and_rank(state)
-            ranked = unseen_first(ranked, state.recommendation_exposure)
+                        assessment, ranked = self._retrieve_and_rank(state) # reank again if llm used
+            ranked = unseen_first(ranked, state.recommendation_exposure) # reorder to prioritize unseen recommendations
             question = self.question_policy.choose(state, ranked, assessment, turn)
             recommendations = tuple(item.parent_asin for item in ranked)
             message = explain(state.active)
@@ -140,15 +151,15 @@ class ShoppingAgent:
         self,
         state: SessionState,
     ) -> tuple[RetrievalAssessment, list[CandidateEvidence]]:
-        plan = self.planner.plan(state.active)
-        generated = self.retriever.retrieve(state.active, plan)
-        fused = reciprocal_rank_fusion(generated, plan.generator_weights, k=self.config.rrf_k)
+        plan = self.planner.plan(state.active) # get route weights
+        generated = self.retriever.retrieve(state.active, plan) # get all 5 route candidate lists
+        fused = reciprocal_rank_fusion(generated, plan.generator_weights, k=self.config.rrf_k) # weighted rff merge
         assessment = assess_results(
             generated,
             fused,
             overlap_depth=self.config.assessment_overlap_depth,
             stability_scale=self.config.assessment_stability_scale,
-        )
+        ) # assess how much the 5 route candidate lists agree with each other
         ranked = self.reranker.rank(fused, state.active, state.customer_profile)
         return assessment, ranked
 

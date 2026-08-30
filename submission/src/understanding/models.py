@@ -39,8 +39,8 @@ class IntentFrame:
     """Immutable interpretation output for exactly one customer message."""
 
     raw_message: str
-    dialogue_acts: tuple[str, ...]
-    slot_updates: tuple[SlotUpdate, ...]
+    dialogue_acts: tuple[str, ...] # ["inform": new info, "correct": intent override, "decline": no preference]
+    slot_updates: tuple[SlotUpdate, ...] # what to update in session state
     category_phrases: tuple[str, ...]
     preference_phrases: tuple[str, ...]
     exclusions: tuple[str, ...]

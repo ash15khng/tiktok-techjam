@@ -8,7 +8,7 @@ from submission.src.dialog.models import SessionState
 
 
 class SessionStore:
-    """Thread-safe in-process map from session ID to isolated mutable state."""
+    """Map from session ID to Session state. Stored in memory."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}

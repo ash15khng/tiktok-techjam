@@ -131,7 +131,7 @@ class MessageInterpreter:
         return self.enrich_with_semantics(frame, context=context)
 
     def parse_deterministic(self, message: str, *, last_ask_attribute: str | None) -> IntentFrame:
-        """Interpret a turn without invoking an optional provider."""
+        """Interpret a turn without llm use yet."""
 
         raw = str(message or "")
         lowered = normalize_text(raw)
@@ -139,12 +139,13 @@ class MessageInterpreter:
         negative_feedback = bool(NEGATIVE_FEEDBACK_RE.search(lowered))
         no_preference: Attribute | None = None
         no_preference_match = NO_PREFERENCE_RE.search(raw)
-        if no_preference_match:
+
+        if no_preference_match: # explicit sentence, saying they dont care about a specific attribute
             try:
                 no_preference = Attribute(no_preference_match.group(1).casefold())
             except ValueError:
                 no_preference = Attribute.OTHER
-        elif CONTEXTUAL_NO_PREFERENCE_RE.search(lowered):
+        elif CONTEXTUAL_NO_PREFERENCE_RE.search(lowered): # bare decline, saying they dont care, assumed to be the last asked attribute
             try:
                 no_preference = (
                     Attribute(last_ask_attribute)
@@ -153,17 +154,17 @@ class MessageInterpreter:
                 )
             except ValueError:
                 no_preference = Attribute.OTHER
-        else:
+        else: # cleans and check against bare decline again. returns None if no match
             no_preference = contextual_no_preference(raw, last_ask_attribute)
 
-        categories: list[str] = []
+        categories: list[str] = [] # finds category phrases in the message, e.g. "looking for running shoes" -> "running shoes"
         category_match = CATEGORY_RE.search(raw)
         if category_match:
             category = _clean_phrase(category_match.group(1))
             if category and not category.casefold().startswith("is:"):
                 categories.append(category)
 
-        preferences: list[str] = []
+        preferences: list[str] = [] # finds preference phrases in the message, e.g. "I want red shoes" -> "red shoes"
         catalog_style_tail = False
         payload_match = PAYLOAD_RE.search(raw)
         if payload_match:

@@ -21,17 +21,13 @@ class StateReducer:
         self._record_clarification_outcome(state, frame)
         active = state.active
         if frame.override:
-            # A changed intent invalidates the meaning of earlier rejection:
-            # previously shown items may become relevant under the new request.
+            # clears past recommendation
             state.recommendation_exposure.clear()
-            if frame.category_phrases:
+            if frame.category_phrases: # category override clears all previous preferences and exclusions
                 active.preference_phrases.clear()
                 active.exclusions.clear()
                 active.slot_values.clear()
-            elif active.preference_phrases:
-                # The simulator and ordinary corrections refer to the earlier
-                # preference in the opening request. Later confirmed evidence
-                # remains active unless the category itself changes.
+            elif active.preference_phrases: # clears only observed attribute override
                 stale = active.preference_phrases.pop(0)
                 for attribute, values in tuple(active.slot_values.items()):
                     active.slot_values[attribute] = [value for value in values if value != stale]
@@ -43,14 +39,16 @@ class StateReducer:
             ):
                 active.category_phrases.clear()
             _append_unique(active.category_phrases, frame.category_phrases)
+
         _append_unique(
             active.preference_phrases,
             (*frame.preference_phrases, *frame.query_rewrites),
         )
-        _append_unique(active.exclusions, frame.exclusions)
+        _append_unique(active.exclusions, frame.exclusions) # exclusion items
+
         for update in frame.slot_updates:
             attribute = update.attribute.value
-            if update.operation == "set_any":
+            if update.operation == "set_any": # no preference for this attribute, e.g. "I don't care about color"
                 active.slot_values.pop(attribute, None)
                 active.suppressed_attributes.add(attribute)
                 continue

@@ -1,8 +1,6 @@
 """Central catalog-derived schema for the fixed Agent API attributes.
 
-The API attribute names are fixed by the competition contract. Their possible
-values are not: value phrases are learned from the frozen catalog's structured
-metadata instead of being repeated as word lists across runtime modules.
+API attribute names are fixed by competition contract. 
 """
 
 from __future__ import annotations
@@ -34,9 +32,9 @@ ATTRIBUTE_SPECS = (
     AttributeSpec(
         "material",
         ("material", "fabric", "metal type"),
-        "Do you have a material preference?",
+        "What material would you like it to be made of?",
     ),
-    AttributeSpec("color", ("color", "colour"), "Do you have a color preference?"),
+    AttributeSpec("color", ("color", "colour"), "What color would you like it to be in?"),
     AttributeSpec(
         "style",
         (
@@ -61,15 +59,15 @@ ATTRIBUTE_SPECS = (
         ("sport", "occasion", "recommended uses", "specific uses", "lifestyle"),
         "What occasion or use case is this for?",
     ),
-    AttributeSpec("budget", (), "What budget range should I use?"),
-    AttributeSpec("brand", ("brand", "brand name"), "Do you have a brand preference?"),
-    AttributeSpec("category", (), "Which product category should I focus on?"),
+    AttributeSpec("budget", (), "What does your budget range look like?"),
+    AttributeSpec("brand", ("brand", "brand name"), "Do you prefer any specific brands?"),
+    AttributeSpec("category", (), "Which product category are you interested in?"),
 )
 
 ATTRIBUTE_ORDER = tuple(spec.name for spec in ATTRIBUTE_SPECS)
 VALUE_RESOLUTION_ORDER = (
     "material", "color", "size", "use_case", "style", "brand", "category", "feature",
-)
+) # what will likely cut the search space most (when answer isn't null).
 QUESTION_TEXT = {spec.name: spec.question for spec in ATTRIBUTE_SPECS} | {
     "other": "What other requirement matters most for the item you want?"
 }

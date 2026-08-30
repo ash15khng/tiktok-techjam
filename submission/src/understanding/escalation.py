@@ -38,7 +38,18 @@ class SemanticEscalationPolicy:
         *,
         top_exact_preference_match: bool = False,
     ) -> SemanticEscalationDecision:
-        """Gate a model call using language gaps and retrieval stability."""
+        """
+        Gate a model call using language gaps and retrieval stability.
+        no usable category was found,
+        the category wording looks ambiguous,
+        the language looks difficult,
+        retrieval routes disagree
+
+        will skip if:
+        the message is only a short contextual answer,
+        the top product already contains an exact preference phrase,
+        deterministic retrieval appears sufficient
+        """
 
         terms = tokenize(frame.raw_message, drop_stopwords=False)
         if len(terms) < self.config.semantic_min_escalation_terms:

@@ -1,8 +1,9 @@
-"""Load frozen JSONL products and expose read-only SQLite FTS5 search.
+"""
+Load frozen JSONL products and expose read-only SQLite FTS5 search.
 
-The input file contains one product object per line. ``CatalogStore`` validates
-unique non-empty ``parent_asin`` values, normalizes missing fields to safe empty
-values, and builds only in-memory derived indexes; it never edits the catalog.
+The input file contains one product object per line. 
+``CatalogStore`` validates unique non-empty ``parent_asin`` values, 
+normalizes missing fields to defaults, and builds only in-memory derived indexes;
 """
 
 from __future__ import annotations
@@ -18,11 +19,9 @@ from submission.src.catalog.models import CatalogSearchResult, ProductRecord
 from submission.src.catalog.normalization import flatten_text, string_values, tokenize
 
 
-# SQLite BM25 weights follow: parent_asin, title, categories, features, details,
-# store, description. Raising a field makes matches there more influential;
-# lowering it shifts evidence to other fields. The field route preserves the
-# organizer baseline, while title/category/constraint variants were retained as
-# independent candidate generators after the five-route system improved recall.
+# SQLite BM25 weights: 
+# parent_asin, title, categories, features, details, store, description. 
+# Raising a field makes matches there more influential
 FIELD_WEIGHTS = (0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0)
 TITLE_WEIGHTS = (0.0, 8.0, 0.4, 0.2, 0.2, 0.2, 0.1)
 CATEGORY_WEIGHTS = (0.0, 0.5, 8.0, 0.5, 0.5, 0.2, 0.2)
@@ -39,7 +38,7 @@ def _number(value: object) -> float | None:
 
 
 class CatalogStore:
-    """Read-only product store; derived indexes never mutate source records."""
+    """Read-only product store with in-memory SQLite FTS5 search and derived indexes."""
 
     def __init__(self, catalog_path: str | Path) -> None:
         self.catalog_path = Path(catalog_path)
@@ -168,7 +167,8 @@ class CatalogStore:
         limit: int,
         require_all: bool = False,
     ) -> list[CatalogSearchResult]:
-        """Return ordered FTS matches for normalized terms.
+        """
+        Returns ordered FTS matches for normalized terms.
 
         ``require_all=True`` uses AND semantics; otherwise OR preserves recall.
         SQLite parser failures yield an empty route so other generators and the

@@ -44,8 +44,11 @@ class QuestionPolicy:
         if turn >= self.config.max_turns:
             return QuestionDecision(None, None, None, "last_turn")
         active = state.active
+        # Aggregate attributes that should not be asked again (suppressed or previously asked)
         unavailable = active.suppressed_attributes | set(active.asked_attributes)
         top = candidates[: self.config.question_candidate_depth]
+
+        # Compute overall confidence based on retrieval stability and preference saturation
         stability_weight = min(1.0, max(0.0, self.config.question_stability_weight))
         preference_confidence = min(
             1.0,
@@ -58,9 +61,7 @@ class QuestionPolicy:
             + (1.0 - stability_weight) * preference_confidence,
         )
 
-        # A declined or unanswerable structured question is a signal to let the
-        # customer name their own priority. This avoids serially interrogating
-        # them about every catalog field and gives one broad recovery turn.
+        # If the user skipped/declined the last question, give them a broad recovery turn instead of continuing interrogation.
         previous_question_unanswered = (
             state.last_ask_attribute is not None
             and state.last_ask_attribute != "other"
@@ -75,13 +76,18 @@ class QuestionPolicy:
                 "unanswered_question_recovery",
             )
 
+        # Evaluate potential attributes to see which one best partitions the top candidates
         values: list[tuple[float, str]] = []
         for attribute in QUESTION_ATTRIBUTE_ORDER:
             if attribute in unavailable:
                 continue
             groups = [self._value(attribute, item.parent_asin) for item in top]
             grounded = [value for value in groups if value]
+
+            # Coverage: Fraction of top items possessing data for this attribute
             coverage = len(grounded) / max(1, len(top))
+
+            # Diversity: How evenly split values are (high diversity = clean partition)
             counts = Counter(grounded)
             diversity = (
                 1.0
@@ -89,14 +95,19 @@ class QuestionPolicy:
                 if grounded
                 else 0.0
             )
+
+            # Answerability: Historical likelihood the user can answer this attribute
             prior = self._baseline_answerability(attribute)
             answerability = state.answerability_posterior(
                 prior,
                 strength=self.config.question_prior_strength,
             )
+
+            # Final attribute value is scaled down by current confidence
             value = coverage * diversity * answerability * (1.0 - confidence)
             values.append((value, attribute))
 
+        # Pick the highest-scoring attribute if it clears the threshold or if user feedback was negative
         if values:
             best_value, best_attribute = max(
                 values,
@@ -109,6 +120,8 @@ class QuestionPolicy:
                     best_value,
                     "candidate_partition",
                 )
+
+        # Fallback to a broad recovery question if confidence is still low
         if (
             "other" not in unavailable
             and confidence < self.config.broad_recovery_confidence_ceiling
