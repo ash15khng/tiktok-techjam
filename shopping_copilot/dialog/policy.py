@@ -2,45 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 
+from shopping_copilot.catalog.attributes import QUESTION_TEXT
 from shopping_copilot.catalog.store import CatalogStore
 from shopping_copilot.config import MVPConfig
 from shopping_copilot.dialog.models import QuestionDecision, SessionState
 from shopping_copilot.retrieval.models import CandidateEvidence, RetrievalAssessment
-
-
-MATERIAL_RE = re.compile(r"\b(cotton|polyester|nylon|leather|wool|spandex|silk|rayon)\b", re.I)
-COLOR_RE = re.compile(r"\b(black|white|blue|red|pink|green|brown|gray|grey|purple|yellow|orange|navy)\b", re.I)
-SIZE_RE = re.compile(r"\b(?:size\s*)?(xs|s|m|l|xl|xxl|wide|narrow|small|medium|large)\b", re.I)
-
-QUESTION_TEXT = {
-    "feature": "Which feature matters most for the product you want?",
-    "material": "Do you have a material preference?",
-    "color": "Do you have a color preference?",
-    "style": "What style or fit do you prefer?",
-    "size": "What size or fit requirement should I use?",
-    "use_case": "What occasion or use case is this for?",
-    "budget": "What budget range should I use?",
-    "brand": "Do you have a brand preference?",
-    "category": "Which product category should I focus on?",
-    "other": "What other requirement matters most for the item you want?",
-}
-
-# Released-data answerability audit, rounded and deliberately conservative.
-# These priors are not probabilities of the hidden target and need more tuning.
-ANSWERABILITY_PRIOR = {
-    "feature": 0.95,
-    "material": 0.72,
-    "color": 0.28,
-    "style": 0.38,
-    "size": 0.25,
-    "use_case": 0.35,
-    "budget": 0.22,
-    "brand": 0.15,
-    "category": 0.40,
-}
 
 
 class QuestionPolicy:
@@ -90,7 +58,9 @@ class QuestionPolicy:
             coverage = len(grounded) / max(1, len(top))
             counts = Counter(grounded)
             diversity = 1.0 - sum((count / len(grounded)) ** 2 for count in counts.values()) if grounded else 0.0
-            value = coverage * diversity * ANSWERABILITY_PRIOR[attribute] * (1.0 - confidence)
+            prior = self._baseline_answerability(attribute)
+            answerability = state.answerability_posterior(prior)
+            value = coverage * diversity * answerability * (1.0 - confidence)
             values.append((value, attribute))
 
         if values:
@@ -103,27 +73,13 @@ class QuestionPolicy:
         return QuestionDecision(None, None, None, "confidence_or_no_answerable_attribute")
 
     def _value(self, attribute: str, parent_asin: str) -> str | None:
-        product = self.store.get(parent_asin)
-        text = product.search_text
-        if attribute == "feature":
-            return product.features[0][:80].casefold() if product.features else None
-        if attribute == "material":
-            match = MATERIAL_RE.search(text)
-            return match.group(1).casefold() if match else None
-        if attribute == "color":
-            match = COLOR_RE.search(text)
-            return match.group(1).casefold() if match else None
-        if attribute == "size":
-            match = SIZE_RE.search(text)
-            return match.group(1).casefold() if match else None
-        if attribute == "style":
-            return next((value.casefold()[:80] for value in product.details if "style" in value.casefold() or "fit" in value.casefold()), None)
-        if attribute == "use_case":
-            return next((word for word in ("hiking", "running", "gym", "winter", "outdoor", "work", "wedding", "travel") if word in text.casefold()), None)
-        if attribute == "budget":
-            return str(int(product.price // 25) * 25) if product.price is not None else None
-        if attribute == "brand":
-            return product.store.casefold() if product.store else None
-        if attribute == "category":
-            return product.categories[-1].casefold() if product.categories else None
-        return None
+        attributes = getattr(self.store, "attributes", None)
+        if attributes is None:
+            return None
+        return attributes.representative_value(parent_asin, attribute)
+
+    def _baseline_answerability(self, attribute: str) -> float:
+        attributes = getattr(self.store, "attributes", None)
+        if attributes is None:
+            return 0.50
+        return attributes.baseline_answerability(attribute)

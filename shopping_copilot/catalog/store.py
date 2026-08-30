@@ -8,6 +8,7 @@ import sqlite3
 from functools import lru_cache
 from pathlib import Path
 
+from shopping_copilot.catalog.attributes import CatalogAttributeRegistry
 from shopping_copilot.catalog.models import CatalogSearchResult, ProductRecord
 from shopping_copilot.catalog.normalization import flatten_text, string_values, tokenize
 
@@ -34,6 +35,7 @@ class CatalogStore:
         self.products: dict[str, ProductRecord] = {}
         self._build()
         self.valid_ids = frozenset(self.products)
+        self.attributes = CatalogAttributeRegistry(self.products)
         self._popular = tuple(
             product.parent_asin
             for product in sorted(
@@ -71,6 +73,10 @@ class CatalogStore:
                     price=_number(raw.get("price")),
                     average_rating=_number(raw.get("average_rating")),
                     rating_number=int(_number(raw.get("rating_number")) or 0),
+                    detail_pairs=tuple(
+                        (str(key), flatten_text(value))
+                        for key, value in (raw.get("details") or {}).items()
+                    ) if isinstance(raw.get("details"), dict) else (),
                 )
                 self.products[parent_asin] = product
                 batch.append(

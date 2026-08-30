@@ -7,9 +7,28 @@ from shopping_copilot.understanding.interpreter import MessageInterpreter
 from shopping_copilot.understanding.models import Attribute
 
 
+class _CatalogResolver:
+    values = {
+        "leather": ("material",),
+        "blue": ("color",),
+        "boots": ("category",),
+        "wedding": ("use_case",),
+    }
+
+    def candidate_attributes(self, text: str, *, preferred: str | None = None) -> tuple[str, ...]:
+        normalized = text.casefold().strip(" /.,")
+        candidates = next(
+            (attributes for value, attributes in self.values.items() if value in normalized),
+            (),
+        )
+        if preferred in candidates:
+            return (preferred, *(value for value in candidates if value != preferred))
+        return candidates
+
+
 class MessageInterpreterTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.interpreter = MessageInterpreter()
+        self.interpreter = MessageInterpreter(attribute_resolver=_CatalogResolver())
 
     def parse(self, message: str, last_ask: str | None = None):
         return self.interpreter.parse(message, last_ask_attribute=last_ask, context="")
@@ -110,7 +129,10 @@ class MessageInterpreterTest(unittest.TestCase):
                     completion_tokens=9,
                 )
 
-        interpreter = MessageInterpreter(StaticSemanticParser())
+        interpreter = MessageInterpreter(
+            StaticSemanticParser(),
+            attribute_resolver=_CatalogResolver(),
+        )
         frame = interpreter.parse(
             "Something polished but comfortable for a humid outdoor wedding.",
             last_ask_attribute=None,

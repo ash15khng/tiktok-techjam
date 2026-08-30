@@ -18,7 +18,7 @@ PRODUCTS = (
         "description": [],
         "price": 50.0,
         "categories": ["Shoes", "Running Shoes"],
-        "details": {"Color": "Red", "Material": "Cotton"},
+        "details": {"Color": "Red", "Material": "Cotton", "Occasion": "Wedding"},
         "average_rating": 4.5,
         "rating_number": 100,
         "store": "Example",

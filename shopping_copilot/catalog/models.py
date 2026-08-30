@@ -17,6 +17,7 @@ class ProductRecord:
     price: float | None
     average_rating: float | None
     rating_number: int
+    detail_pairs: tuple[tuple[str, str], ...] = ()
 
     @property
     def search_text(self) -> str:

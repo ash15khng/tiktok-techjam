@@ -5,17 +5,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from shopping_copilot.catalog.attributes import (
+    AttributeValueResolver,
+    EmptyAttributeResolver,
+    cue_attributes,
+)
 from shopping_copilot.catalog.normalization import normalize_text, tokenize
 from shopping_copilot.understanding.models import Attribute
 
 
-MATERIALS = frozenset(("cotton", "polyester", "nylon", "leather", "wool", "spandex", "silk", "rayon", "fabric"))
-COLORS = frozenset(("black", "white", "blue", "red", "pink", "green", "brown", "gray", "grey", "purple", "yellow", "orange", "navy"))
-USE_CASES = frozenset(("hiking", "running", "gym", "winter", "outdoor", "work", "wedding", "travel", "sports"))
-SIZE_TERMS = frozenset(("size", "sizing", "width", "wide", "narrow", "small", "medium", "large", "xs", "xl", "xxl"))
-STYLE_TERMS = frozenset(("style", "fit", "sleeve", "neck", "closure", "department", "platform", "heel", "heels", "stiletto", "wedge", "slim", "loose"))
-FEATURE_TERMS = frozenset(("feature", "waterproof", "breathable", "cushion", "cushioned", "support", "supportive", "non-slip", "nonslip", "pocket", "pockets"))
-CATEGORY_TERMS = frozenset(("shoe", "shoes", "boot", "boots", "shirt", "shirts", "dress", "dresses", "pants", "jewelry", "watch", "watches", "bag", "bags"))
 BARE_DECLINES = frozenset(("no", "nope", "none", "any", "anything", "either", "whatever", "doesn't matter", "does not matter", "dont care", "don't care"))
 BARE_AFFIRMATIONS = frozenset(("yes", "yeah", "yep", "sure", "okay", "ok"))
 SHORT_REPLY_MAX_TOKENS = 8
@@ -43,33 +41,24 @@ def _clean_value(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip(" -;,.\t\r\n/\\")
 
 
-def explicit_attribute_for(text: str) -> Attribute | None:
+def explicit_attribute_for(
+    text: str,
+    *,
+    resolver: AttributeValueResolver | None = None,
+    preferred: Attribute | None = None,
+) -> Attribute | None:
     """Return only attributes explicitly evidenced by the current words."""
 
-    terms = set(tokenize(text, drop_stopwords=False))
-    lowered = normalize_text(text)
-    if (
-        "budget" in terms
-        or "$" in text
-        or re.search(r"\b(?:under|below|over|above|around|between|up\s+to|at\s+(?:most|least))\s+\$?\d", lowered)
-    ):
-        return Attribute.BUDGET
-    if terms & MATERIALS:
-        return Attribute.MATERIAL
-    if terms & COLORS or "color" in terms or "colour" in terms:
-        return Attribute.COLOR
-    if terms & USE_CASES:
-        return Attribute.USE_CASE
-    if terms & SIZE_TERMS or re.search(r"\bsize\s*\d+(?:\.5)?\b", lowered):
-        return Attribute.SIZE
-    if terms & STYLE_TERMS:
-        return Attribute.STYLE
-    if "brand" in terms or "manufacturer" in terms or "made by" in lowered:
-        return Attribute.BRAND
-    if terms & FEATURE_TERMS:
-        return Attribute.FEATURE
-    if "category" in terms or terms & CATEGORY_TERMS:
-        return Attribute.CATEGORY
+    cues = cue_attributes(text)
+    if cues:
+        return Attribute(cues[0])
+    selected = resolver or EmptyAttributeResolver()
+    candidates = selected.candidate_attributes(
+        text,
+        preferred=preferred.value if preferred is not None else None,
+    )
+    if candidates:
+        return Attribute(candidates[0])
     return None
 
 
@@ -87,6 +76,7 @@ def resolve_reply_value(
     *,
     last_ask_attribute: str | None,
     override: bool,
+    resolver: AttributeValueResolver | None = None,
 ) -> ResolvedReply:
     """Prefer explicit current evidence, then bounded immediate-question context."""
 
@@ -95,11 +85,12 @@ def resolve_reply_value(
     if not cleaned or normalized in BARE_AFFIRMATIONS or normalized in BARE_DECLINES:
         return ResolvedReply(None, "", "non_value")
 
-    explicit = explicit_attribute_for(cleaned)
-    if explicit is not None:
-        return ResolvedReply(explicit, cleaned, "explicit")
-
     context = _allowed_context(last_ask_attribute)
+    explicit = explicit_attribute_for(cleaned, resolver=resolver, preferred=context)
+    if explicit is not None:
+        source = "contextual" if explicit is context and not cue_attributes(cleaned) else "explicit"
+        return ResolvedReply(explicit, cleaned, source)
+
     terms = tokenize(cleaned, drop_stopwords=False)
     if (
         not override

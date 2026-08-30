@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
+from shopping_copilot.catalog.attributes import AttributeValueResolver, EmptyAttributeResolver
 from shopping_copilot.catalog.normalization import normalize_text
 from shopping_copilot.contracts import DisabledSemanticParser, SemanticParser
 from shopping_copilot.understanding.contextual import (
@@ -66,10 +67,12 @@ class MessageInterpreter:
         *,
         semantic_min_confidence: float = 0.55,
         semantic_max_rewrite_terms: int = 12,
+        attribute_resolver: AttributeValueResolver | None = None,
     ) -> None:
         self.semantic_parser = semantic_parser or DisabledSemanticParser()
         self.semantic_min_confidence = semantic_min_confidence
         self.semantic_max_rewrite_terms = semantic_max_rewrite_terms
+        self.attribute_resolver = attribute_resolver or EmptyAttributeResolver()
 
     def parse(self, message: str, *, last_ask_attribute: str | None, context: str) -> IntentFrame:
         """Compatibility path: deterministic parse followed by normal semantic gating."""
@@ -157,11 +160,27 @@ class MessageInterpreter:
                 retained_preferences.append(phrase)
 
         resolved_preferences = [
-            (value, resolve_reply_value(value, last_ask_attribute=last_ask_attribute, override=override))
+            (
+                value,
+                resolve_reply_value(
+                    value,
+                    last_ask_attribute=last_ask_attribute,
+                    override=override,
+                    resolver=self.attribute_resolver,
+                ),
+            )
             for value in retained_preferences
         ]
         resolved_exclusions = [
-            (value, resolve_reply_value(value, last_ask_attribute=last_ask_attribute, override=override))
+            (
+                value,
+                resolve_reply_value(
+                    value,
+                    last_ask_attribute=last_ask_attribute,
+                    override=override,
+                    resolver=self.attribute_resolver,
+                ),
+            )
             for value in exclusions
         ]
         resolved_categories = list(categories)

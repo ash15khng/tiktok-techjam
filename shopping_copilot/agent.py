@@ -39,6 +39,7 @@ class ShoppingAgent:
             self.semantic_parser,
             semantic_min_confidence=self.config.semantic_min_confidence,
             semantic_max_rewrite_terms=self.config.semantic_max_rewrite_terms,
+            attribute_resolver=self.catalog.attributes,
         )
         self.reducer = StateReducer()
         self.planner = RetrievalPlanner(self.config)

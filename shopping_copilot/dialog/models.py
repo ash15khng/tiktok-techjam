@@ -45,6 +45,14 @@ class SessionState:
     recommendation_exposure: set[str] = field(default_factory=set)
     turn_count: int = 0
     last_feedback_negative: bool = False
+    clarification_outcomes: dict[str, str] = field(default_factory=dict)
+
+    def answerability_posterior(self, prior: float, *, strength: float = 3.0) -> float:
+        """Update a catalog prior with this customer's clarification behavior."""
+
+        successes = sum(outcome == "answered" for outcome in self.clarification_outcomes.values())
+        failures = sum(outcome in {"declined", "redirected"} for outcome in self.clarification_outcomes.values())
+        return (strength * prior + successes) / (strength + successes + failures)
 
 
 @dataclass(frozen=True)

@@ -5,11 +5,27 @@ import unittest
 from shopping_copilot.catalog.models import CatalogSearchResult
 from shopping_copilot.dialog.models import SessionState
 from shopping_copilot.dialog.reducer import StateReducer
+from shopping_copilot.dialog.store import SessionStore
 from shopping_copilot.retrieval.fusion import reciprocal_rank_fusion
 from shopping_copilot.understanding.interpreter import MessageInterpreter
+from shopping_copilot.understanding.models import Attribute, IntentFrame, SlotUpdate
 
 
 class DialogAndFusionTest(unittest.TestCase):
+    @staticmethod
+    def _answer_frame(attribute: Attribute, operation: str, value: str) -> IntentFrame:
+        return IntentFrame(
+            raw_message=value,
+            dialogue_acts=("answer",),
+            slot_updates=(SlotUpdate(attribute, operation, value, value),),
+            category_phrases=(),
+            preference_phrases=() if operation == "set_any" else (value,),
+            exclusions=(),
+            override=False,
+            negative_feedback=False,
+            no_preference_attribute=attribute if operation == "set_any" else None,
+        )
+
     def test_override_removes_stale_preference_but_keeps_category(self) -> None:
         interpreter = MessageInterpreter()
         reducer = StateReducer()
@@ -87,6 +103,28 @@ class DialogAndFusionTest(unittest.TestCase):
 
         self.assertEqual(fused[0].parent_asin, "B")
         self.assertEqual(fused[0].generator_ranks, {"field": 2, "title": 1})
+
+    def test_clarification_outcomes_update_the_session_posterior(self) -> None:
+        reducer = StateReducer()
+        answered = SessionState("answered", {}, last_ask_attribute="color")
+        declined = SessionState("declined", {}, last_ask_attribute="color")
+
+        reducer.apply(answered, self._answer_frame(Attribute.COLOR, "add", "cerulean"))
+        reducer.apply(declined, self._answer_frame(Attribute.COLOR, "set_any", "any"))
+
+        self.assertEqual(answered.clarification_outcomes, {"color": "answered"})
+        self.assertEqual(declined.clarification_outcomes, {"color": "declined"})
+        self.assertGreater(answered.answerability_posterior(0.5), 0.5)
+        self.assertLess(declined.answerability_posterior(0.5), 0.5)
+
+    def test_reset_clears_session_clarification_learning(self) -> None:
+        sessions = SessionStore()
+        state = sessions.reset("session", {})
+        state.clarification_outcomes["material"] = "answered"
+
+        replacement = sessions.reset("session", {})
+
+        self.assertEqual(replacement.clarification_outcomes, {})
 
 
 if __name__ == "__main__":

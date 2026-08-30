@@ -16,6 +16,7 @@ class StateReducer:
     """The only component allowed to mutate Active State."""
 
     def apply(self, state: SessionState, frame: IntentFrame) -> SessionState:
+        self._record_clarification_outcome(state, frame)
         active = state.active
         if frame.override:
             # A changed intent invalidates the meaning of earlier rejection:
@@ -58,6 +59,19 @@ class StateReducer:
         state.turn_count += 1
         state.last_feedback_negative = frame.negative_feedback
         return state
+
+    @staticmethod
+    def _record_clarification_outcome(state: SessionState, frame: IntentFrame) -> None:
+        attribute = state.last_ask_attribute
+        if not attribute or attribute == "other" or attribute in state.clarification_outcomes:
+            return
+        updates = tuple(update for update in frame.slot_updates if update.attribute.value == attribute)
+        if any(update.operation == "set_any" for update in updates):
+            state.clarification_outcomes[attribute] = "declined"
+        elif any(update.operation in {"add", "replace"} and update.value for update in updates):
+            state.clarification_outcomes[attribute] = "answered"
+        elif frame.slot_updates or frame.category_phrases or frame.preference_phrases:
+            state.clarification_outcomes[attribute] = "redirected"
 
     def apply_semantic(self, state: SessionState, frame: IntentFrame) -> bool:
         """Apply only grounded semantic additions without advancing the turn."""
