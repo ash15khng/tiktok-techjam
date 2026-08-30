@@ -21,6 +21,9 @@ variables documented in [`../docs/llm-integration.md`](../docs/llm-integration.m
 If it is disabled, unavailable, or fails, the deterministic offline agent
 continues to return valid recommendations.
 
+The complete runtime class map and per-class purpose notes are in
+[`../docs/class-diagrams.md`](../docs/class-diagrams.md).
+
 ## Run and test
 
 From the repository root:

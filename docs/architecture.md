@@ -3,6 +3,8 @@
 This document describes the code that exists in the final submission package.
 It does not describe aspirational components. Remaining work and alternative
 implementations are centralized in [`../TODO.md`](../TODO.md).
+For the same design organized by classes, ownership, protocols, and data
+objects, see [`class-diagrams.md`](class-diagrams.md).
 
 ## 1. Objective and constraints
 
