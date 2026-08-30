@@ -120,12 +120,17 @@ class LightweightReranker:
                 + profile_boost
             )
 
-            ev.lightweight_score = round(normalized_support, 4)
-            ev.final_score = round(final_score, 4)
+            # Contradiction penalty scale
+            hard_penalty = 0.35 * hard_contra_ratio
+            soft_penalty = 0.10 * soft_contra_ratio
+            adjusted_score = max(0.0, final_score - hard_penalty - soft_penalty)
 
-            # Contradiction flag (0 if has hard contradiction, 1 if clean)
+            ev.lightweight_score = round(normalized_support, 4)
+            ev.final_score = round(adjusted_score, 4)
+
+            # Hard demotion if hard contradictions exist
             is_clean = 0 if hard_contras > 0 else 1
-            scored_candidates.append((is_clean, final_score, ev))
+            scored_candidates.append((is_clean, adjusted_score, ev))
 
         # Sort: clean items first (descending), then score descending, then ASIN ascending
         scored_candidates.sort(key=lambda item: (-item[0], -item[1], item[2].parent_asin))
