@@ -47,3 +47,4 @@ def evaluate_constraint(
     # Positive constraint evaluation
     has_match = any(v in prod_values or any(v in pv for pv in prod_values) for v in constraint.values)
     return "match" if has_match else "contradiction"
+

@@ -65,3 +65,4 @@ class FieldWeightedFTSGenerator:
             return []
 
         return self.catalog_index.search_bm25(terms, limit=limit)
+

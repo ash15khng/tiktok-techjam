@@ -71,3 +71,4 @@ class RetrievalAssessor:
         stdev = statistics.stdev(scores)
         nqc = stdev / (abs(mean_score) + 1e-9)
         return min(1.0, max(0.0, nqc / 2.0))
+

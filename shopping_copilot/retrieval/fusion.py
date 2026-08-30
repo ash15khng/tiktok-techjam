@@ -43,3 +43,4 @@ class WeightedRRFFusion:
                     ev.rrf_score = 1.0
 
         return evidence_map
+

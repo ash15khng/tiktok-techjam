@@ -129,3 +129,4 @@ class LightweightReranker:
         # Sort: clean items first (descending), then score descending, then ASIN ascending
         scored_candidates.sort(key=lambda item: (-item[0], -item[1], item[2].parent_asin))
         return [item[2] for item in scored_candidates[:top_k]]
+

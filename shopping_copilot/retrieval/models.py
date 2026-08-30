@@ -54,3 +54,4 @@ class CandidateEvidence:
     lightweight_score: float = 0.0
     final_score: float = 0.0
     reason_codes: list[str] = field(default_factory=list)
+

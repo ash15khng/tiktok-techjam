@@ -136,3 +136,4 @@ class AttributeCandidateGenerator:
         # Sort descending by score, tie-break by ASIN
         scored_candidates.sort(key=lambda item: (-item[1], item[0]))
         return scored_candidates[:limit]
+

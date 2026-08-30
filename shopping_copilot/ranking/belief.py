@@ -36,3 +36,4 @@ def compute_top10_confidence(
         + 0.10 * (1.0 - min(1.0, max(0.0, category_entropy)))
     )
     return round(min(1.0, max(0.0, raw)), 4)
+

@@ -11,3 +11,4 @@ class ActionDecision:
     message: str
     recommendations: tuple[str, ...]
     reason_codes: tuple[str, ...] = ()
+
