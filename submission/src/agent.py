@@ -1,4 +1,9 @@
-"""End-to-end deterministic orchestrator with optional semantic hints."""
+"""Coordinate one complete shopping turn from message to recommendations.
+
+Input is the frozen catalog plus organizer ``reset``/``respond`` calls. Output is
+always passed through :class:`ResponseGuard` so component errors cannot emit an
+invalid attribute or an identifier outside the catalog.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ from pathlib import Path
 
 from submission.src.catalog.normalization import tokenize
 from submission.src.catalog.store import FIELD_WEIGHTS, CatalogStore
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.contracts import DisabledSemanticParser, ResponseGuard, SemanticParser
 from submission.src.dialog.policy import QuestionPolicy
 from submission.src.dialog.reducer import StateReducer
@@ -17,6 +22,7 @@ from submission.src.ranking.exposure import unseen_first
 from submission.src.ranking.reranker import LightweightReranker
 from submission.src.retrieval.fusion import assess_results, reciprocal_rank_fusion
 from submission.src.retrieval.lexical import LexicalRetriever
+from submission.src.retrieval.models import CandidateEvidence, RetrievalAssessment
 from submission.src.retrieval.planner import RetrievalPlanner
 from submission.src.understanding.interpreter import MessageInterpreter
 from submission.src.understanding.escalation import SemanticEscalationPolicy
@@ -24,14 +30,16 @@ from submission.src.understanding.semantic import semantic_parser_from_environme
 
 
 class ShoppingAgent:
+    """Offline-first shopping agent with an optional grounded semantic parser."""
+
     def __init__(
         self,
         catalog_path: str | Path = "data/catalog.jsonl",
         *,
-        config: MVPConfig | None = None,
+        config: AgentConfig | None = None,
         semantic_parser: SemanticParser | None = None,
     ) -> None:
-        self.config = config or MVPConfig()
+        self.config = config or AgentConfig()
         self.catalog = CatalogStore(catalog_path)
         self.sessions = SessionStore()
         self.semantic_parser = semantic_parser or semantic_parser_from_environment(self.config)
@@ -50,9 +58,13 @@ class ShoppingAgent:
         self.guard = ResponseGuard(self.catalog.valid_ids, self.catalog.popular)
 
     def reset(self, session_id: str, user_profile: dict) -> None:
+        """Create fresh mutable state for one evaluator session."""
+
         self.sessions.reset(session_id, user_profile)
 
     def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
+        """Interpret, retrieve, rank, ask if useful, and return a safe response."""
+
         state = self.sessions.get(session_id)
         try:
             frame = self.interpreter.parse_deterministic(
@@ -87,7 +99,7 @@ class ShoppingAgent:
             state.last_ask_attribute = question.ask_attribute
             if question.ask_attribute:
                 state.active.asked_attributes.append(question.ask_attribute)
-            state.last_recommendations = recommendations[:10]
+            state.last_recommendations = recommendations[: self.config.max_recommendations]
             response = self.guard.build(
                 message=message,
                 ask_attribute=question.ask_attribute,
@@ -106,7 +118,7 @@ class ShoppingAgent:
             fallback = self.catalog.search(
                 fallback_terms,
                 weights=FIELD_WEIGHTS,
-                limit=min(int(top_k), 10),
+                limit=min(int(top_k), self.config.max_recommendations),
             )
             return self.guard.build(
                 message="I used the reliable catalog search fallback for these matches.",
@@ -116,26 +128,43 @@ class ShoppingAgent:
             )
 
     def diagnostics(self) -> dict[str, dict[str, int | float]]:
+        """Return credential-free semantic gate/provider counters."""
+
         provider_stats = getattr(self.semantic_parser, "stats", None)
         return {
             "semantic_escalation": self.semantic_escalation.stats(),
             "semantic_provider": provider_stats() if callable(provider_stats) else {},
         }
 
-    def _retrieve_and_rank(self, state: SessionState):
+    def _retrieve_and_rank(
+        self,
+        state: SessionState,
+    ) -> tuple[RetrievalAssessment, list[CandidateEvidence]]:
         plan = self.planner.plan(state.active)
         generated = self.retriever.retrieve(state.active, plan)
         fused = reciprocal_rank_fusion(generated, plan.generator_weights, k=self.config.rrf_k)
-        assessment = assess_results(generated, fused)
+        assessment = assess_results(
+            generated,
+            fused,
+            overlap_depth=self.config.assessment_overlap_depth,
+            stability_scale=self.config.assessment_stability_scale,
+        )
         ranked = self.reranker.rank(fused, state.active, state.customer_profile)
         return assessment, ranked
 
-    def _top_exact_preference_match(self, state: SessionState, ranked) -> bool:
+    def _top_exact_preference_match(
+        self,
+        state: SessionState,
+        ranked: list[CandidateEvidence],
+    ) -> bool:
         if not ranked:
             return False
         product_text = self.catalog.product_token_text(ranked[0].parent_asin)
         for phrase in state.active.preference_phrases:
             phrase_terms = tokenize(phrase, drop_stopwords=False)
-            if len(phrase_terms) >= 3 and " ".join(phrase_terms) in product_text:
+            if (
+                len(phrase_terms) >= self.config.semantic_exact_phrase_min_terms
+                and " ".join(phrase_terms) in product_text
+            ):
                 return True
         return False

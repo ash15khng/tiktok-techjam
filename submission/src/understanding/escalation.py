@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from threading import RLock
 
 from submission.src.catalog.normalization import normalize_text, tokenize
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.retrieval.models import RetrievalAssessment
 from submission.src.understanding.models import IntentFrame
@@ -16,6 +16,8 @@ from submission.src.understanding.semantic import should_call_semantic_parser
 
 @dataclass(frozen=True)
 class SemanticEscalationDecision:
+    """Whether one billed semantic call is justified and its reason code."""
+
     should_call: bool
     reason: str
 
@@ -23,7 +25,7 @@ class SemanticEscalationDecision:
 class SemanticEscalationPolicy:
     """Call semantics only when language and deterministic evidence warrant it."""
 
-    def __init__(self, config: MVPConfig) -> None:
+    def __init__(self, config: AgentConfig) -> None:
         self.config = config
         self._lock = RLock()
         self._counts: Counter[str] = Counter()
@@ -36,6 +38,8 @@ class SemanticEscalationPolicy:
         *,
         top_exact_preference_match: bool = False,
     ) -> SemanticEscalationDecision:
+        """Gate a model call using language gaps and retrieval stability."""
+
         terms = tokenize(frame.raw_message, drop_stopwords=False)
         if len(terms) < self.config.semantic_min_escalation_terms:
             return self._record(False, "short_or_contextual")
@@ -66,10 +70,14 @@ class SemanticEscalationPolicy:
         return self._record(False, "deterministic_retrieval_sufficient")
 
     def record_outcome(self, *, applied: bool) -> None:
+        """Record whether grounded semantic evidence changed active state."""
+
         with self._lock:
             self._counts["semantic_applied" if applied else "semantic_noop"] += 1
 
     def stats(self) -> dict[str, int]:
+        """Return credential-free call-decision counters."""
+
         with self._lock:
             return dict(self._counts)
 

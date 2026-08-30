@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import unittest
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.contracts import DisabledSemanticParser
 
 
-class SkeletonTest(unittest.TestCase):
+class ContractDefaultsTest(unittest.TestCase):
     def test_defaults_respect_agent_limits(self) -> None:
-        config = MVPConfig()
+        config = AgentConfig()
 
         self.assertEqual(config.max_recommendations, 10)
         self.assertGreaterEqual(config.candidate_depth, config.max_recommendations)

@@ -114,8 +114,8 @@ class DialogAndFusionTest(unittest.TestCase):
 
         self.assertEqual(answered.clarification_outcomes, {"color": "answered"})
         self.assertEqual(declined.clarification_outcomes, {"color": "declined"})
-        self.assertGreater(answered.answerability_posterior(0.5), 0.5)
-        self.assertLess(declined.answerability_posterior(0.5), 0.5)
+        self.assertGreater(answered.answerability_posterior(0.5, strength=3.0), 0.5)
+        self.assertLess(declined.answerability_posterior(0.5, strength=3.0), 0.5)
 
     def test_reset_clears_session_clarification_learning(self) -> None:
         sessions = SessionStore()

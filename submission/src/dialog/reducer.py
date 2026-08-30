@@ -16,6 +16,8 @@ class StateReducer:
     """The only component allowed to mutate Active State."""
 
     def apply(self, state: SessionState, frame: IntentFrame) -> SessionState:
+        """Apply one deterministic Intent Frame and advance session turn state."""
+
         self._record_clarification_outcome(state, frame)
         active = state.active
         if frame.override:

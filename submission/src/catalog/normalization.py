@@ -22,6 +22,8 @@ STOPWORDS = frozenset(
 
 
 def flatten_text(value: object) -> str:
+    """Convert a scalar/list/mapping catalog field into searchable text."""
+
     if value is None:
         return ""
     if isinstance(value, dict):
@@ -32,6 +34,8 @@ def flatten_text(value: object) -> str:
 
 
 def string_values(value: object) -> tuple[str, ...]:
+    """Return non-empty catalog values while preserving field boundaries."""
+
     if isinstance(value, dict):
         return tuple(f"{key} {item}" for key, item in value.items() if item not in (None, "", []))
     if isinstance(value, list):
@@ -40,10 +44,14 @@ def string_values(value: object) -> tuple[str, ...]:
 
 
 def normalize_text(value: str) -> str:
+    """Return Unicode-normalized, case-folded text with collapsed whitespace."""
+
     return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
 
 
 def tokenize(value: str, *, drop_stopwords: bool = True) -> tuple[str, ...]:
+    """Return conservative alphanumeric terms, optionally without stopwords."""
+
     tokens = tuple(token.casefold() for token in TOKEN_RE.findall(normalize_text(value)))
     if not drop_stopwords:
         return tokens

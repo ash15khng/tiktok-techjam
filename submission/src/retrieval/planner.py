@@ -4,19 +4,27 @@ from __future__ import annotations
 
 import math
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.retrieval.models import RetrievalPlan
 
 
 class RetrievalPlanner:
-    def __init__(self, config: MVPConfig) -> None:
+    """Convert current evidence into a soft blend of five retrieval routes."""
+
+    def __init__(self, config: AgentConfig) -> None:
         self.config = config
 
     def plan(self, active: ActiveState) -> RetrievalPlan:
+        """Return route weights for one immutable snapshot of active state."""
+
         hard_evidence = len(active.preference_phrases) + len(active.exclusions)
         category_evidence = int(bool(active.category_phrases))
-        z = -1.1 + 0.95 * hard_evidence + 0.35 * category_evidence
+        z = (
+            self.config.focus_intercept
+            + self.config.focus_preference_weight * hard_evidence
+            + self.config.focus_category_weight * category_evidence
+        )
         focus_score = 1.0 / (1.0 + math.exp(-z))
         focused = dict(self.config.focused_route_weights)
         exploratory = dict(self.config.exploratory_route_weights)

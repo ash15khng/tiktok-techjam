@@ -1,4 +1,4 @@
-"""Title and field-weighted SQLite FTS retrieval."""
+"""Generate five inspectable candidate lists from one Active State snapshot."""
 
 from __future__ import annotations
 
@@ -9,17 +9,30 @@ from submission.src.catalog.store import (
     TITLE_WEIGHTS,
     CatalogStore,
 )
-from submission.src.config import MVPConfig
+from submission.src.catalog.models import CatalogSearchResult
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.retrieval.models import RetrievalPlan
 
 
 class LexicalRetriever:
-    def __init__(self, store: CatalogStore, config: MVPConfig) -> None:
+    """Run field, title, category, popularity, and constraint generators."""
+
+    def __init__(self, store: CatalogStore, config: AgentConfig) -> None:
         self.store = store
         self.config = config
 
-    def retrieve(self, active: ActiveState, plan: RetrievalPlan) -> dict[str, list]:
+    def retrieve(
+        self,
+        active: ActiveState,
+        plan: RetrievalPlan,
+    ) -> dict[str, list[CatalogSearchResult]]:
+        """Return generator-name to best-first catalog results.
+
+        Explicit constraints first use AND retrieval and fall back to OR only
+        when the strict route is empty. Missing fields never exclude a product.
+        """
+
         query_terms = active.query_terms()[: self.config.max_query_terms]
         category_terms = active.category_terms()[: self.config.max_query_terms]
         preference_terms = active.preference_terms()[: self.config.max_query_terms]
@@ -58,8 +71,16 @@ class LexicalRetriever:
             ),
         )[: plan.generator_limit]
         return {
-            "field": self.store.search(query_terms, weights=FIELD_WEIGHTS, limit=plan.generator_limit),
-            "title": self.store.search(category_terms or query_terms, weights=TITLE_WEIGHTS, limit=plan.generator_limit),
+            "field": self.store.search(
+                query_terms,
+                weights=FIELD_WEIGHTS,
+                limit=plan.generator_limit,
+            ),
+            "title": self.store.search(
+                category_terms or query_terms,
+                weights=TITLE_WEIGHTS,
+                limit=plan.generator_limit,
+            ),
             "category": category_pool[: plan.generator_limit],
             "category_popular": category_popular,
             "constraint": constraint,

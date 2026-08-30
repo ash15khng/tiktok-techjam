@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.retrieval.models import RetrievalAssessment
 from submission.src.understanding.escalation import SemanticEscalationPolicy
@@ -11,7 +11,7 @@ from submission.src.understanding.interpreter import MessageInterpreter
 
 class SemanticEscalationPolicyTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.policy = SemanticEscalationPolicy(MVPConfig())
+        self.policy = SemanticEscalationPolicy(AgentConfig())
         self.interpreter = MessageInterpreter()
 
     def decide(self, message: str, active: ActiveState, stability: float):

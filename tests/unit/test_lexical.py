@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from submission.src.catalog.models import CatalogSearchResult, ProductRecord
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.retrieval.lexical import LexicalRetriever
 from submission.src.retrieval.models import RetrievalPlan
@@ -49,7 +49,7 @@ class _Store:
 class LexicalRetrieverTest(unittest.TestCase):
     def test_category_popular_route_reorders_a_broad_category_pool(self) -> None:
         active = ActiveState(category_phrases=["fashion sneakers"])
-        routes = LexicalRetriever(_Store(), MVPConfig()).retrieve(
+        routes = LexicalRetriever(_Store(), AgentConfig()).retrieve(
             active,
             RetrievalPlan(focus_score=0.2, generator_weights={}, generator_limit=2),
         )

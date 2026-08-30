@@ -9,6 +9,8 @@ from submission.src.contracts import SemanticSlotHypothesis
 
 
 class Attribute(str, Enum):
+    """Allowed structured attributes from the organizer Agent contract."""
+
     CATEGORY = "category"
     MATERIAL = "material"
     COLOR = "color"
@@ -23,6 +25,8 @@ class Attribute(str, Enum):
 
 @dataclass(frozen=True)
 class SlotUpdate:
+    """Immutable proposal to add, replace, exclude, clear, or decline a slot."""
+
     attribute: Attribute
     operation: str
     value: str
@@ -32,6 +36,8 @@ class SlotUpdate:
 
 @dataclass(frozen=True)
 class IntentFrame:
+    """Immutable interpretation output for exactly one customer message."""
+
     raw_message: str
     dialogue_acts: tuple[str, ...]
     slot_updates: tuple[SlotUpdate, ...]

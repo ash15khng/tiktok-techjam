@@ -6,14 +6,16 @@ import math
 
 from submission.src.catalog.normalization import tokenize
 from submission.src.catalog.store import CatalogStore
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.ranking.budget import price_signal
 from submission.src.retrieval.models import CandidateEvidence
 
 
 class LightweightReranker:
-    def __init__(self, store: CatalogStore, config: MVPConfig) -> None:
+    """Apply inspectable evidence signals to a bounded fused candidate union."""
+
+    def __init__(self, store: CatalogStore, config: AgentConfig) -> None:
         self.store = store
         self.config = config
 
@@ -23,6 +25,8 @@ class LightweightReranker:
         active: ActiveState,
         customer_profile: dict,
     ) -> list[CandidateEvidence]:
+        """Return candidates ordered best-to-worst for the active request."""
+
         if not candidates:
             return []
         query_terms = active.query_terms()
@@ -46,7 +50,7 @@ class LightweightReranker:
             exact_ratio = exact_count / max(1, len(phrases))
             contradiction = any(values and values.issubset(product_terms) for values in exclusion_terms)
             profile_overlap = len(product_terms & profile_terms) / max(1, len(profile_terms))
-            profile_score = min(self.config.profile_score_cap, 0.03 * profile_overlap)
+            profile_score = self.config.profile_score_cap * min(1.0, profile_overlap)
             product = self.store.get(candidate.parent_asin)
             rating_count = product.rating_number
             budget_signal = price_signal(product.price, active.slot_values.get("budget", []))
@@ -55,13 +59,13 @@ class LightweightReranker:
                 math.log1p(max(0, rating_count)) / math.log1p(self.config.popularity_count_cap),
             )
             candidate.final_score = (
-                0.52 * (candidate.rrf_score / max_rrf)
-                + 0.36 * coverage
-                + 0.12 * exact_ratio
+                self.config.rerank_rrf_weight * (candidate.rrf_score / max_rrf)
+                + self.config.rerank_idf_coverage_weight * coverage
+                + self.config.rerank_exact_phrase_weight * exact_ratio
                 + profile_score
                 + self.config.popularity_weight * popularity
                 + self.config.budget_signal_weight * budget_signal
-                - (0.70 if contradiction else 0.0)
+                - (self.config.exclusion_penalty if contradiction else 0.0)
             )
         rerankable.sort(key=lambda item: (-item.final_score, -item.rrf_score, item.parent_asin))
         return [*rerankable, *remainder]

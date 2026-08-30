@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState, SessionState
 from submission.src.dialog.policy import QuestionPolicy
 from submission.src.retrieval.models import RetrievalAssessment
@@ -26,7 +26,7 @@ class QuestionPolicyTest(unittest.TestCase):
             top10_stability=0.2,
         )
 
-        decision = QuestionPolicy(object(), MVPConfig()).choose(state, [], assessment, turn=2)
+        decision = QuestionPolicy(object(), AgentConfig()).choose(state, [], assessment, turn=2)
 
         self.assertEqual(decision.ask_attribute, "other")
         self.assertEqual(decision.reason, "unanswered_question_recovery")
@@ -44,7 +44,7 @@ class QuestionPolicyTest(unittest.TestCase):
         )
         assessment = RetrievalAssessment(0, 0.0, 0.0)
 
-        decision = QuestionPolicy(object(), MVPConfig()).choose(state, [], assessment, turn=2)
+        decision = QuestionPolicy(object(), AgentConfig()).choose(state, [], assessment, turn=2)
 
         self.assertNotEqual(decision.ask_attribute, "other")
 

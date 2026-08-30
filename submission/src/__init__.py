@@ -1,5 +1,5 @@
 """Conversational product discovery agent."""
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 
-__all__ = ["MVPConfig"]
+__all__ = ["AgentConfig"]

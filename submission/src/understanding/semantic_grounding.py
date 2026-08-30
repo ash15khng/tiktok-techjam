@@ -13,10 +13,17 @@ from submission.src.understanding.models import Attribute, SlotUpdate
 ASIN_RE = re.compile(r"\bB0[A-Z0-9]{8}\b", re.IGNORECASE)
 NEGATION_RE = re.compile(r"\b(?:not|no|without|avoid|exclude|anything\s+but)\b", re.IGNORECASE)
 SOFT_SEMANTIC_ATTRIBUTES = frozenset({Attribute.FEATURE, Attribute.STYLE, Attribute.USE_CASE})
+WHITESPACE_RE = re.compile(r"\s+")
+# Raising this admits richer model hypotheses but increases semantic drift;
+# lowering it rejects long yet potentially useful needs. Eight terms retained
+# grounded hard-suite behavior; no isolated sweep is claimed.
+MAX_SEMANTIC_HYPOTHESIS_TERMS = 8
 
 
 @dataclass(frozen=True)
 class GroundedSemantic:
+    """Validated model evidence allowed to cross into deterministic state."""
+
     query_rewrites: tuple[str, ...] = ()
     subjective_needs: tuple[str, ...] = ()
     slot_hypotheses: tuple[SemanticSlotHypothesis, ...] = ()
@@ -70,7 +77,8 @@ def ground_semantic_interpretation(
             or attribute in deterministic_attributes
             or hypothesis.confidence < min_confidence
             or not cleaned_value
-            or len(tokenize(cleaned_value, drop_stopwords=False)) > 8
+            or len(tokenize(cleaned_value, drop_stopwords=False))
+            > MAX_SEMANTIC_HYPOTHESIS_TERMS
             or ASIN_RE.search(cleaned_value)
             or NEGATION_RE.search(cleaned_value)
             or not _evidence_is_grounded(hypothesis.evidence, raw_message)
@@ -133,8 +141,11 @@ def _evidence_is_grounded(evidence: str, raw_message: str) -> bool:
     if not evidence_terms or len(evidence_terms) > len(message_terms):
         return False
     width = len(evidence_terms)
-    return any(message_terms[index : index + width] == evidence_terms for index in range(len(message_terms) - width + 1))
+    return any(
+        message_terms[index : index + width] == evidence_terms
+        for index in range(len(message_terms) - width + 1)
+    )
 
 
 def _clean_phrase(value: str) -> str:
-    return re.sub(r"\s+", " ", str(value)).strip(" -;,.\t\r\n")
+    return WHITESPACE_RE.sub(" ", str(value)).strip(" -;,.\t\r\n")

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Protocol
 
 
@@ -21,6 +21,7 @@ ALLOWED_ATTRIBUTES = frozenset(
         "other",
     }
 )
+CONTRACT_MAX_RECOMMENDATIONS = 10
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class SemanticInterpretation:
 
 
 class SemanticParser(Protocol):
-    """Provider boundary for a future local model or legal LLM API."""
+    """Provider boundary for a local model or legally accessible LLM API."""
 
     def interpret(self, message: str, context: str) -> SemanticInterpretation:
         """Return structured hints or raise a provider-specific error."""
@@ -63,7 +64,12 @@ class SemanticParserError(RuntimeError):
 
 
 class ResponseGuard:
-    """Build a contract-safe response from untrusted component output."""
+    """Build a contract-safe response from untrusted component output.
+
+    Input recommendations may contain duplicates or invalid IDs. Output always
+    contains unique frozen-catalog IDs in first-seen order and includes valid,
+    non-negative token accounting.
+    """
 
     def __init__(
         self,
@@ -83,17 +89,25 @@ class ResponseGuard:
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
     ) -> dict:
-        limit = max(0, min(int(top_k), 10))
+        limit = max(0, min(int(top_k), CONTRACT_MAX_RECOMMENDATIONS))
         attribute = ask_attribute if ask_attribute in ALLOWED_ATTRIBUTES else None
         ranked: list[str] = []
         seen: set[str] = set()
-        for candidate in (*recommendations, *self._fallback(limit)):
+        for candidate in recommendations:
             parent_asin = str(candidate).strip()
             if parent_asin in self._valid_ids and parent_asin not in seen:
                 seen.add(parent_asin)
                 ranked.append(parent_asin)
             if len(ranked) >= limit:
                 break
+        if len(ranked) < limit:
+            for candidate in self._fallback(limit):
+                parent_asin = str(candidate).strip()
+                if parent_asin in self._valid_ids and parent_asin not in seen:
+                    seen.add(parent_asin)
+                    ranked.append(parent_asin)
+                if len(ranked) >= limit:
+                    break
         return {
             "message": str(message or "Here are the closest catalog matches."),
             "ask_attribute": attribute,

@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.contracts import SemanticParserError
 from submission.src.understanding.semantic_grounding import ground_semantic_interpretation
 from submission.src.understanding.semantic import configured_responses_parser_from_environment
 
 
 def main() -> int:
-    provider = configured_responses_parser_from_environment(MVPConfig())
+    """Run one fixed paid probe and print only safe, structured diagnostics."""
+
+    provider = configured_responses_parser_from_environment(AgentConfig())
     if provider is None:
         print("SoCLaaS parser is disabled or its URL, key, or model is missing.")
         return 2
@@ -22,7 +24,7 @@ def main() -> int:
     except SemanticParserError as error:
         print(f"SoCLaaS request failed safely: {error}")
         return 1
-    config = MVPConfig()
+    config = AgentConfig()
     grounded = ground_semantic_interpretation(
         result,
         raw_message=message,

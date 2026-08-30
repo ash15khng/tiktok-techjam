@@ -1,4 +1,9 @@
-"""Load the small, approved set of local runtime environment values."""
+"""Load approved local settings without exposing or overwriting credentials.
+
+By default this module reads the repository-level ``.env`` beside
+``submission/``. ``SHOPPING_COPILOT_ENV_FILE`` can instead point to a secret
+file outside the repository. Only explicitly approved keys enter ``os.environ``.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +23,8 @@ APPROVED_ENV_KEYS = frozenset(
     }
 )
 ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-DEFAULT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ENV_FILE = REPOSITORY_ROOT / ".env"
 
 
 def load_runtime_environment(path: str | Path | None = None) -> Path | None:

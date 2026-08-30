@@ -12,6 +12,15 @@ UPPER_RE = re.compile(rf"\b(?:under|below|up\s+to|at\s+most|no\s+more\s+than)\s+
 LOWER_RE = re.compile(rf"\b(?:over|above|at\s+least|no\s+less\s+than)\s+{NUMBER}", re.I)
 AROUND_RE = re.compile(rf"\b(?:budget\s+)?(?:around|about|roughly|approximately)\s+{NUMBER}", re.I)
 
+# Raising either tolerance makes approximate budgets more permissive; lowering
+# them treats "around" more like a hard bound. The 25%/$10 rule is an initial
+# consumer-language heuristic and has not had an isolated fold sweep.
+APPROXIMATE_TOLERANCE_RATE = 0.25
+APPROXIMATE_MIN_TOLERANCE = 10.0
+APPROXIMATE_VIOLATION_SIGNAL = -0.50
+HARD_VIOLATION_SIGNAL = -1.0
+MATCH_SIGNAL = 1.0
+
 
 @dataclass(frozen=True)
 class BudgetRange:
@@ -21,6 +30,8 @@ class BudgetRange:
 
 
 def parse_budget(value: str) -> BudgetRange | None:
+    """Parse lower, upper, ranged, or approximate currency language."""
+
     between = BETWEEN_RE.search(value)
     if between:
         first, second = sorted((float(between.group(1)), float(between.group(2))))
@@ -34,7 +45,7 @@ def parse_budget(value: str) -> BudgetRange | None:
     around = AROUND_RE.search(value)
     if around:
         center = float(around.group(1))
-        tolerance = max(10.0, center * 0.25)
+        tolerance = max(APPROXIMATE_MIN_TOLERANCE, center * APPROXIMATE_TOLERANCE_RATE)
         return BudgetRange(max(0.0, center - tolerance), center + tolerance, True)
     return None
 
@@ -48,7 +59,7 @@ def price_signal(price: float | None, values: list[str]) -> float:
     if parsed is None:
         return 0.0
     if parsed.lower is not None and price < parsed.lower:
-        return -0.5 if parsed.approximate else -1.0
+        return APPROXIMATE_VIOLATION_SIGNAL if parsed.approximate else HARD_VIOLATION_SIGNAL
     if parsed.upper is not None and price > parsed.upper:
-        return -0.5 if parsed.approximate else -1.0
-    return 1.0
+        return APPROXIMATE_VIOLATION_SIGNAL if parsed.approximate else HARD_VIOLATION_SIGNAL
+    return MATCH_SIGNAL

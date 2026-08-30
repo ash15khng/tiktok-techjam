@@ -15,7 +15,7 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 from submission.src.catalog.normalization import normalize_text, tokenize
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.contracts import (
     ALLOWED_ATTRIBUTES,
     DisabledSemanticParser,
@@ -38,6 +38,34 @@ DETERMINISTIC_REPLY_RE = re.compile(
     r"what\s+matters\s+is|key\s+requirement\s+is|ignore\s+my\s+earlier)\b",
     re.IGNORECASE,
 )
+COMPLEX_CONNECTOR_RE = re.compile(
+    r"\b(?:although|however|while|but|rather\s+than|something\s+for)\b",
+    re.IGNORECASE,
+)
+
+# Provider response bounds are mirrored in both JSON schema and local
+# validation. Raising them spends more tokens and permits more drift; lowering
+# them may omit useful expansions. The current compact shape was exercised by
+# mocked contract tests and live compatibility probes.
+MAX_QUERY_REWRITES = 2
+MAX_SUBJECTIVE_NEEDS = 3
+MAX_SLOT_HYPOTHESES = 4
+MAX_REWRITE_CHARS = 160
+MAX_NEED_CHARS = 120
+MAX_SLOT_VALUE_CHARS = 120
+MAX_EVIDENCE_CHARS = 160
+MAX_PROVIDER_SLOT_CONFIDENCE = 0.70
+COMPLEX_MESSAGE_MIN_TERMS = 8
+
+# Direct GatedSemanticParser defaults support isolated tests. Production always
+# supplies AgentConfig values. Raising the caps increases cost/memory; lowering
+# them skips or evicts sooner.
+DEFAULT_GATE_MAX_CALLS = 64
+DEFAULT_GATE_CACHE_SIZE = 256
+MAX_ENV_CALLS = 10_000
+MIN_PROVIDER_TIMEOUT_SECONDS = 0.10
+MAX_PROVIDER_TIMEOUT_SECONDS = 30.0
+MILLISECONDS_PER_SECOND = 1_000
 
 Transport = Callable[[urllib.request.Request, float], dict]
 
@@ -46,14 +74,14 @@ SEMANTIC_SCHEMA = {
     "properties": {
         "query_rewrites": {
             "type": "array",
-            "items": {"type": "string", "maxLength": 160},
+            "items": {"type": "string", "maxLength": MAX_REWRITE_CHARS},
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": MAX_QUERY_REWRITES,
         },
         "subjective_needs": {
             "type": "array",
-            "items": {"type": "string", "maxLength": 120},
-            "maxItems": 3,
+            "items": {"type": "string", "maxLength": MAX_NEED_CHARS},
+            "maxItems": MAX_SUBJECTIVE_NEEDS,
         },
         "slot_hypotheses": {
             "type": "array",
@@ -61,14 +89,14 @@ SEMANTIC_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "attribute": {"type": "string", "enum": ["feature", "style", "use_case"]},
-                    "value": {"type": "string", "maxLength": 120},
+                    "value": {"type": "string", "maxLength": MAX_SLOT_VALUE_CHARS},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                    "evidence": {"type": "string", "maxLength": 160},
+                    "evidence": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
                 },
                 "required": ["attribute", "value", "confidence", "evidence"],
                 "additionalProperties": False,
             },
-            "maxItems": 4,
+            "maxItems": MAX_SLOT_HYPOTHESES,
         },
     },
     "required": ["query_rewrites", "subjective_needs", "slot_hypotheses"],
@@ -101,13 +129,11 @@ def should_call_semantic_parser(message: str, *, has_fallback_span: bool = False
     if DETERMINISTIC_REPLY_RE.search(message):
         return False
     terms = tokenize(message, drop_stopwords=False)
-    has_complex_connector = bool(
-        re.search(r"\b(?:although|however|while|but|rather\s+than|something\s+for)\b", message, re.I)
-    )
+    has_complex_connector = bool(COMPLEX_CONNECTOR_RE.search(message))
     return (
         has_fallback_span
         or bool(IMPLICIT_OUTCOME_RE.search(message))
-        or (len(terms) >= 8 and has_complex_connector)
+        or (len(terms) >= COMPLEX_MESSAGE_MIN_TERMS and has_complex_connector)
     )
 
 
@@ -122,7 +148,12 @@ def _default_transport(request: urllib.request.Request, timeout: float) -> dict:
 
 
 class ResponsesSemanticParser:
-    """Small Responses-compatible HTTP adapter with no SDK dependency."""
+    """Responses-compatible HTTP adapter with no third-party SDK.
+
+    Input is a customer message plus compact active-state text. Output is a
+    locally validated :class:`SemanticInterpretation`; credentials and raw
+    provider bodies are never included in raised errors or diagnostics.
+    """
 
     def __init__(
         self,
@@ -223,14 +254,22 @@ class ResponsesSemanticParser:
         if not isinstance(value, dict):
             raise SemanticParserError("semantic response root must be an object")
 
-        rewrites = _validated_strings(value.get("query_rewrites"), limit=2, max_length=160)
-        needs = _validated_strings(value.get("subjective_needs"), limit=3, max_length=120)
+        rewrites = _validated_strings(
+            value.get("query_rewrites"),
+            limit=MAX_QUERY_REWRITES,
+            max_length=MAX_REWRITE_CHARS,
+        )
+        needs = _validated_strings(
+            value.get("subjective_needs"),
+            limit=MAX_SUBJECTIVE_NEEDS,
+            max_length=MAX_NEED_CHARS,
+        )
         raw_hypotheses = value.get("slot_hypotheses")
         if not isinstance(raw_hypotheses, list):
             raw_hypotheses = []
         hypotheses: list[SemanticSlotHypothesis] = []
         for item in raw_hypotheses:
-            if len(hypotheses) >= 4:
+            if len(hypotheses) >= MAX_SLOT_HYPOTHESES:
                 break
             if not isinstance(item, dict) or not {"attribute", "value", "confidence", "evidence"}.issubset(item):
                 continue
@@ -240,9 +279,17 @@ class ResponsesSemanticParser:
             confidence = item["confidence"]
             if attribute not in ALLOWED_ATTRIBUTES:
                 continue
-            if not isinstance(value_text, str) or not value_text.strip() or len(value_text) > 120:
+            if (
+                not isinstance(value_text, str)
+                or not value_text.strip()
+                or len(value_text) > MAX_SLOT_VALUE_CHARS
+            ):
                 continue
-            if not isinstance(evidence, str) or not evidence.strip() or len(evidence) > 160:
+            if (
+                not isinstance(evidence, str)
+                or not evidence.strip()
+                or len(evidence) > MAX_EVIDENCE_CHARS
+            ):
                 continue
             if not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
                 continue
@@ -250,7 +297,7 @@ class ResponsesSemanticParser:
                 SemanticSlotHypothesis(
                     str(attribute),
                     value_text.strip(),
-                    min(0.70, float(confidence)),
+                    min(MAX_PROVIDER_SLOT_CONFIDENCE, float(confidence)),
                     evidence.strip(),
                 )
             )
@@ -267,7 +314,13 @@ class ResponsesSemanticParser:
 class GatedSemanticParser:
     """Cost gate, bounded cache, call budget, and reliable provider fallback."""
 
-    def __init__(self, provider: SemanticParser, *, max_calls: int = 64, cache_size: int = 256) -> None:
+    def __init__(
+        self,
+        provider: SemanticParser,
+        *,
+        max_calls: int = DEFAULT_GATE_MAX_CALLS,
+        cache_size: int = DEFAULT_GATE_CACHE_SIZE,
+    ) -> None:
         self.provider = provider
         self.max_calls = max(0, int(max_calls))
         self.cache_size = max(0, int(cache_size))
@@ -312,13 +365,17 @@ class GatedSemanticParser:
         except (SemanticParserError, OSError, ValueError, TypeError):
             with self._lock:
                 self._metrics["failed_calls"] += 1
-                self._metrics["provider_latency_ms"] += (perf_counter() - started) * 1000
+                self._metrics["provider_latency_ms"] += (
+                    perf_counter() - started
+                ) * MILLISECONDS_PER_SECOND
             return SemanticInterpretation()
         with self._lock:
             self._metrics["successful_calls"] += 1
             self._metrics["prompt_tokens"] += result.prompt_tokens
             self._metrics["completion_tokens"] += result.completion_tokens
-            self._metrics["provider_latency_ms"] += (perf_counter() - started) * 1000
+            self._metrics["provider_latency_ms"] += (
+                perf_counter() - started
+            ) * MILLISECONDS_PER_SECOND
             if self.cache_size:
                 self._cache[key] = result
                 self._cache.move_to_end(key)
@@ -333,7 +390,7 @@ class GatedSemanticParser:
             return dict(self._metrics)
 
 
-def semantic_parser_from_environment(config: MVPConfig) -> SemanticParser:
+def semantic_parser_from_environment(config: AgentConfig) -> SemanticParser:
     provider = configured_responses_parser_from_environment(config)
     if provider is None:
         return DisabledSemanticParser()
@@ -344,7 +401,7 @@ def semantic_parser_from_environment(config: MVPConfig) -> SemanticParser:
     )
 
 
-def configured_responses_parser_from_environment(config: MVPConfig) -> ResponsesSemanticParser | None:
+def configured_responses_parser_from_environment(config: AgentConfig) -> ResponsesSemanticParser | None:
     """Build an ungated provider for diagnostics, or return ``None`` safely."""
 
     load_runtime_environment()
@@ -399,7 +456,7 @@ def _environment_max_calls(default: int) -> int:
     if not raw:
         return max(0, int(default))
     try:
-        return min(10_000, max(0, int(raw)))
+        return min(MAX_ENV_CALLS, max(0, int(raw)))
     except ValueError:
         return max(0, int(default))
 
@@ -407,11 +464,20 @@ def _environment_max_calls(default: int) -> int:
 def _environment_timeout(default: float) -> float:
     raw = os.environ.get("SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS", "").strip()
     if not raw:
-        return min(30.0, max(0.1, float(default)))
+        return min(
+            MAX_PROVIDER_TIMEOUT_SECONDS,
+            max(MIN_PROVIDER_TIMEOUT_SECONDS, float(default)),
+        )
     try:
-        return min(30.0, max(0.1, float(raw)))
+        return min(
+            MAX_PROVIDER_TIMEOUT_SECONDS,
+            max(MIN_PROVIDER_TIMEOUT_SECONDS, float(raw)),
+        )
     except ValueError:
-        return min(30.0, max(0.1, float(default)))
+        return min(
+            MAX_PROVIDER_TIMEOUT_SECONDS,
+            max(MIN_PROVIDER_TIMEOUT_SECONDS, float(default)),
+        )
 
 
 def _validated_strings(value: object, *, limit: int, max_length: int) -> tuple[str, ...]:

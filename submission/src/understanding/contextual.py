@@ -18,6 +18,8 @@ BARE_DECLINES = frozenset(("no", "nope", "none", "any", "anything", "either", "w
 BARE_AFFIRMATIONS = frozenset(("yes", "yeah", "yep", "sure", "okay", "ok"))
 SHORT_REPLY_MAX_TOKENS = 8
 SHORT_REPLY_MAX_CHARS = 100
+WHITESPACE_RE = re.compile(r"\s+")
+BARE_BUDGET_RE = re.compile(r"\$?\s*\d+(?:\.\d{1,2})?")
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,7 @@ def _allowed_context(attribute: str | None) -> Attribute | None:
 
 
 def _clean_value(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip(" -;,.\t\r\n/\\")
+    return WHITESPACE_RE.sub(" ", value).strip(" -;,.\t\r\n/\\")
 
 
 def explicit_attribute_for(
@@ -98,7 +100,7 @@ def resolve_reply_value(
         and len(cleaned) <= SHORT_REPLY_MAX_CHARS
         and len(terms) <= SHORT_REPLY_MAX_TOKENS
     ):
-        if context is Attribute.BUDGET and re.fullmatch(r"\$?\s*\d+(?:\.\d{1,2})?", cleaned):
+        if context is Attribute.BUDGET and BARE_BUDGET_RE.fullmatch(cleaned):
             amount = cleaned.lstrip("$ ")
             cleaned = f"budget around ${amount}"
         return ResolvedReply(context, cleaned, "contextual")

@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.ranking.reranker import LightweightReranker
 from submission.src.retrieval.models import CandidateEvidence
@@ -31,7 +31,7 @@ class FakeStore:
 
 class RerankerTest(unittest.TestCase):
     def test_capped_popularity_breaks_an_evidence_tie(self) -> None:
-        reranker = LightweightReranker(FakeStore(), MVPConfig())
+        reranker = LightweightReranker(FakeStore(), AgentConfig())
         active = ActiveState(preference_phrases=["leather"])
         candidates = [
             CandidateEvidence("rare", rrf_score=0.1),
@@ -47,7 +47,7 @@ class RerankerTest(unittest.TestCase):
         store.products["matching"] = SimpleNamespace(rating_number=2, price=50.0)
         store.products["over"] = SimpleNamespace(rating_number=2, price=80.0)
         store.products["missing"] = SimpleNamespace(rating_number=2, price=None)
-        reranker = LightweightReranker(store, MVPConfig())
+        reranker = LightweightReranker(store, AgentConfig())
         active = ActiveState(
             preference_phrases=["under $60"],
             slot_values={"budget": ["under $60"]},

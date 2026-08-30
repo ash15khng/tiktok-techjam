@@ -1,4 +1,9 @@
-"""Immutable catalog access and SQLite FTS indexes."""
+"""Load frozen JSONL products and expose read-only SQLite FTS5 search.
+
+The input file contains one product object per line. ``CatalogStore`` validates
+unique non-empty ``parent_asin`` values, normalizes missing fields to safe empty
+values, and builds only in-memory derived indexes; it never edits the catalog.
+"""
 
 from __future__ import annotations
 
@@ -13,10 +18,17 @@ from submission.src.catalog.models import CatalogSearchResult, ProductRecord
 from submission.src.catalog.normalization import flatten_text, string_values, tokenize
 
 
+# SQLite BM25 weights follow: parent_asin, title, categories, features, details,
+# store, description. Raising a field makes matches there more influential;
+# lowering it shifts evidence to other fields. The field route preserves the
+# organizer baseline, while title/category/constraint variants were retained as
+# independent candidate generators after the five-route system improved recall.
 FIELD_WEIGHTS = (0.0, 6.0, 4.0, 2.5, 2.5, 1.5, 1.0)
 TITLE_WEIGHTS = (0.0, 8.0, 0.4, 0.2, 0.2, 0.2, 0.1)
 CATEGORY_WEIGHTS = (0.0, 0.5, 8.0, 0.5, 0.5, 0.2, 0.2)
 CONSTRAINT_WEIGHTS = (0.0, 1.5, 0.8, 7.0, 6.0, 0.5, 3.0)
+CATALOG_INSERT_BATCH_SIZE = 1_000
+PRODUCT_TEXT_CACHE_SIZE = 4_096
 
 
 def _number(value: object) -> float | None:
@@ -40,7 +52,11 @@ class CatalogStore:
             product.parent_asin
             for product in sorted(
                 self.products.values(),
-                key=lambda item: (-item.rating_number, -(item.average_rating or 0.0), item.parent_asin),
+                key=lambda item: (
+                    -item.rating_number,
+                    -(item.average_rating or 0.0),
+                    item.parent_asin,
+                ),
             )
         )
 
@@ -90,11 +106,17 @@ class CatalogStore:
                         " ".join(product.description),
                     )
                 )
-                if len(batch) >= 1000:
-                    cursor.executemany("INSERT INTO products_fts VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
+                if len(batch) >= CATALOG_INSERT_BATCH_SIZE:
+                    cursor.executemany(
+                        "INSERT INTO products_fts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        batch,
+                    )
                     batch.clear()
         if batch:
-            cursor.executemany("INSERT INTO products_fts VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
+            cursor.executemany(
+                "INSERT INTO products_fts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                batch,
+            )
         cursor.execute("CREATE VIRTUAL TABLE products_vocab USING fts5vocab(products_fts, 'row')")
         self.connection.commit()
 
@@ -122,7 +144,13 @@ class CatalogStore:
         unique = tuple(dict.fromkeys(terms))
         frequencies = self.document_frequencies(unique)
         return tuple(
-            sorted(unique, key=lambda term: (frequencies.get(term, len(self) + 1), unique.index(term)))[:limit]
+            sorted(
+                unique,
+                key=lambda term: (
+                    frequencies.get(term, len(self) + 1),
+                    unique.index(term),
+                ),
+            )[:limit]
         )
 
     def inverse_document_frequency(self, terms: tuple[str, ...]) -> dict[str, float]:
@@ -140,6 +168,13 @@ class CatalogStore:
         limit: int,
         require_all: bool = False,
     ) -> list[CatalogSearchResult]:
+        """Return ordered FTS matches for normalized terms.
+
+        ``require_all=True`` uses AND semantics; otherwise OR preserves recall.
+        SQLite parser failures yield an empty route so other generators and the
+        response guard can continue safely.
+        """
+
         unique = tuple(dict.fromkeys(token for token in terms if token))
         if not unique or limit <= 0:
             return []
@@ -158,10 +193,10 @@ class CatalogStore:
             return []
         return [CatalogSearchResult(str(parent_asin), float(score)) for parent_asin, score in rows]
 
-    @lru_cache(maxsize=4096)
+    @lru_cache(maxsize=PRODUCT_TEXT_CACHE_SIZE)
     def product_terms(self, parent_asin: str) -> frozenset[str]:
         return frozenset(tokenize(self.products[parent_asin].search_text))
 
-    @lru_cache(maxsize=4096)
+    @lru_cache(maxsize=PRODUCT_TEXT_CACHE_SIZE)
     def product_token_text(self, parent_asin: str) -> str:
         return " ".join(tokenize(self.products[parent_asin].search_text, drop_stopwords=False))

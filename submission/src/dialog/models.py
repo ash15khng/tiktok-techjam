@@ -9,6 +9,8 @@ from submission.src.catalog.normalization import tokenize
 
 @dataclass
 class ActiveState:
+    """Reduced current intent after all corrections and overrides are applied."""
+
     category_phrases: list[str] = field(default_factory=list)
     preference_phrases: list[str] = field(default_factory=list)
     exclusions: list[str] = field(default_factory=list)
@@ -26,6 +28,8 @@ class ActiveState:
         return tuple(dict.fromkeys((*self.preference_terms(), *self.category_terms())))
 
     def context_snapshot(self) -> str:
+        """Return compact active evidence for the optional semantic provider."""
+
         parts = [
             f"category={'; '.join(self.category_phrases)}" if self.category_phrases else "",
             f"preferences={'; '.join(self.preference_phrases)}" if self.preference_phrases else "",
@@ -37,6 +41,8 @@ class ActiveState:
 
 @dataclass
 class SessionState:
+    """All mutable state isolated to one evaluator session."""
+
     session_id: str
     customer_profile: dict
     active: ActiveState = field(default_factory=ActiveState)
@@ -47,16 +53,27 @@ class SessionState:
     last_feedback_negative: bool = False
     clarification_outcomes: dict[str, str] = field(default_factory=dict)
 
-    def answerability_posterior(self, prior: float, *, strength: float = 3.0) -> float:
-        """Update a catalog prior with this customer's clarification behavior."""
+    def answerability_posterior(self, prior: float, *, strength: float) -> float:
+        """Return the catalog prior updated by this session's replies.
+
+        Input ``prior`` and ``strength`` are in ``[0, 1]`` and positive pseudo-
+        observation units respectively. The output is an answerability control
+        score; it is reset naturally because every session owns a new state.
+        """
 
         successes = sum(outcome == "answered" for outcome in self.clarification_outcomes.values())
         failures = sum(outcome in {"declined", "redirected"} for outcome in self.clarification_outcomes.values())
-        return (strength * prior + successes) / (strength + successes + failures)
+        bounded_prior = min(1.0, max(0.0, float(prior)))
+        bounded_strength = max(0.01, float(strength))
+        return (bounded_strength * bounded_prior + successes) / (
+            bounded_strength + successes + failures
+        )
 
 
 @dataclass(frozen=True)
 class QuestionDecision:
+    """One optional contract attribute plus customer-facing question text."""
+
     ask_attribute: str | None
     message: str | None
     question_value: float | None

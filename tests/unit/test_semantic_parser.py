@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from submission.src.config import MVPConfig
+from submission.src.config import AgentConfig
 from submission.src.contracts import DisabledSemanticParser, SemanticInterpretation, SemanticParserError
 from submission.src.understanding.semantic import (
     GatedSemanticParser,
@@ -276,7 +276,7 @@ class SemanticParserTest(unittest.TestCase):
                 },
                 clear=True,
             ):
-                parser = semantic_parser_from_environment(MVPConfig())
+                parser = semantic_parser_from_environment(AgentConfig())
 
         self.assertIsInstance(parser, DisabledSemanticParser)
 
@@ -296,7 +296,7 @@ class SemanticParserTest(unittest.TestCase):
                 },
                 clear=True,
             ):
-                parser = semantic_parser_from_environment(MVPConfig())
+                parser = semantic_parser_from_environment(AgentConfig())
 
         self.assertIsInstance(parser, GatedSemanticParser)
         self.assertEqual(parser.provider.responses_url, "https://gateway.example/v1/responses")

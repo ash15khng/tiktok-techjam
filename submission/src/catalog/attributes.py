@@ -26,12 +26,41 @@ class AttributeSpec:
 
 
 ATTRIBUTE_SPECS = (
-    AttributeSpec("feature", ("special feature", "special features", "product benefits"), "Which feature matters most for the product you want?"),
-    AttributeSpec("material", ("material", "fabric", "metal type"), "Do you have a material preference?"),
+    AttributeSpec(
+        "feature",
+        ("special feature", "special features", "product benefits"),
+        "Which feature matters most for the product you want?",
+    ),
+    AttributeSpec(
+        "material",
+        ("material", "fabric", "metal type"),
+        "Do you have a material preference?",
+    ),
     AttributeSpec("color", ("color", "colour"), "Do you have a color preference?"),
-    AttributeSpec("style", ("style", "pattern", "fit type", "neck style", "sleeve type", "closure type", "shape", "theme", "finish type", "collar style", "shirt form type", "top style"), "What style or fit do you prefer?"),
+    AttributeSpec(
+        "style",
+        (
+            "style",
+            "pattern",
+            "fit type",
+            "neck style",
+            "sleeve type",
+            "closure type",
+            "shape",
+            "theme",
+            "finish type",
+            "collar style",
+            "shirt form type",
+            "top style",
+        ),
+        "What style or fit do you prefer?",
+    ),
     AttributeSpec("size", ("size",), "What size or fit requirement should I use?"),
-    AttributeSpec("use_case", ("sport", "occasion", "recommended uses", "specific uses", "lifestyle"), "What occasion or use case is this for?"),
+    AttributeSpec(
+        "use_case",
+        ("sport", "occasion", "recommended uses", "specific uses", "lifestyle"),
+        "What occasion or use case is this for?",
+    ),
     AttributeSpec("budget", (), "What budget range should I use?"),
     AttributeSpec("brand", ("brand", "brand name"), "Do you have a brand preference?"),
     AttributeSpec("category", (), "Which product category should I focus on?"),
@@ -69,6 +98,34 @@ _INFERABLE_ATTRIBUTES = frozenset(("material", "color", "size", "style", "use_ca
 _VALUE_NOISE = frozenset(
     {"", "n/a", "na", "none", "no", "unknown", "other", "default", "not applicable", "one", "type"}
 )
+
+# Catalog-linking bounds prevent accidental phrases and one-off metadata noise
+# from becoming universal attribute values. Increasing the phrase limits raises
+# recall and index/startup cost; lowering them favors precision. Prefix pruning
+# at these values matched the reference scan on 2,000 products with zero diffs.
+FEATURE_SAMPLE_LIMIT = 3
+MIN_FEATURE_TERM_CHARS = 4
+MIN_REPEAT_SUPPORT = 2
+MIN_INFERRED_TERM_CHARS = 3
+MAX_ATTRIBUTE_VALUE_TERMS = 6
+MAX_ATTRIBUTE_VALUE_CHARS = 100
+ATTRIBUTE_VALUE_CACHE_SIZE = 8_192
+INFERRED_VALUE_CACHE_SIZE = 4_096
+
+# More quantiles create finer budget groups but reduce candidates per partition;
+# fewer quantiles blur the catalog's skewed price distribution. These log-space
+# boundaries replaced fixed $25 buckets after inspecting the 50k catalog.
+PRICE_QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
+PRICE_BOUNDARY_RELATIVE_TOLERANCE = 1e-12
+
+# Raising the floor asks sparse-but-natural fields more often; lowering it trusts
+# missing metadata too literally. Raising evidence weight follows catalog
+# coverage more strongly. The current blend is the retained catalog-derived
+# baseline; per-session replies update it separately in dialog state.
+ANSWERABILITY_FLOOR = 0.35
+ANSWERABILITY_CEILING = 0.95
+ANSWERABILITY_EVIDENCE_WEIGHT = 0.60
+NEUTRAL_ANSWERABILITY = 0.50
 
 
 class AttributeValueResolver(Protocol):
@@ -119,8 +176,8 @@ class CatalogAttributeRegistry:
                 value_document_counts[attribute].update(seen)
             feature_terms = {
                 term
-                for term in tokenize(" ".join(product.features[:3]))
-                if len(term) >= 4 and term not in _VALUE_NOISE
+                for term in tokenize(" ".join(product.features[:FEATURE_SAMPLE_LIMIT]))
+                if len(term) >= MIN_FEATURE_TERM_CHARS and term not in _VALUE_NOISE
             }
             value_counts["feature"].update(feature_terms)
             value_document_counts["feature"].update(feature_terms)
@@ -137,16 +194,22 @@ class CatalogAttributeRegistry:
             for phrase, count in counts.items():
                 terms = tokenize(phrase, drop_stopwords=False)
                 if not _usable_value(phrase, terms) or (
-                    len(terms) == 1 and count < 2 and attribute in {"brand", "feature", "style"}
+                    len(terms) == 1
+                    and count < MIN_REPEAT_SUPPORT
+                    and attribute in {"brand", "feature", "style"}
                 ):
                     continue
                 self._phrase_attributes[phrase][attribute] += count
                 if attribute not in {"brand", "category"}:
                     for term in terms:
-                        if len(term) >= 3 and counts[term] >= 2 and term not in _VALUE_NOISE:
+                        if (
+                            len(term) >= MIN_INFERRED_TERM_CHARS
+                            and counts[term] >= MIN_REPEAT_SUPPORT
+                            and term not in _VALUE_NOISE
+                        ):
                             self._phrase_attributes[term][attribute] += counts[term]
         self._max_value_terms = min(
-            6,
+            MAX_ATTRIBUTE_VALUE_TERMS,
             max((len(tokenize(value, drop_stopwords=False)) for value in self._phrase_attributes), default=1),
         )
         self._inference_prefixes: set[tuple[str, ...]] = set()
@@ -194,12 +257,12 @@ class CatalogAttributeRegistry:
         )
         return tuple(ordered)
 
-    @lru_cache(maxsize=8192)
+    @lru_cache(maxsize=ATTRIBUTE_VALUE_CACHE_SIZE)
     def values_for_product(self, parent_asin: str, attribute: str) -> tuple[str, ...]:
         product = self.products[parent_asin]
         direct = list(self._direct.get(parent_asin, {}).get(attribute, ()))
         if attribute == "feature":
-            direct.extend(product.features[:3])
+            direct.extend(product.features[:FEATURE_SAMPLE_LIMIT])
         if attribute == "budget":
             bucket = self.budget_bucket(product.price)
             return (bucket,) if bucket else ()
@@ -208,7 +271,7 @@ class CatalogAttributeRegistry:
         inferred = dict(self._inferred_values_for_product(parent_asin)).get(attribute, ())
         return tuple(dict.fromkeys((*direct, *inferred)))
 
-    @lru_cache(maxsize=4096)
+    @lru_cache(maxsize=INFERRED_VALUE_CACHE_SIZE)
     def _inferred_values_for_product(self, parent_asin: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
         text_terms = tokenize(self.products[parent_asin].search_text, drop_stopwords=False)
         matches: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
@@ -244,13 +307,13 @@ class CatalogAttributeRegistry:
     def baseline_answerability(self, attribute: str) -> float:
         """Return an O(1), catalog-derived prior for clarification usefulness."""
 
-        return self._baseline_answerability.get(attribute, 0.50)
+        return self._baseline_answerability.get(attribute, NEUTRAL_ANSWERABILITY)
 
     def budget_bucket(self, price: float | None) -> str | None:
         if price is None or price <= 0 or not math.isfinite(price):
             return None
         for index, boundary in enumerate(self.price_boundaries):
-            if price <= boundary * (1.0 + 1e-12):
+            if price <= boundary * (1.0 + PRICE_BOUNDARY_RELATIVE_TOLERANCE):
                 return f"q{index}"
         return f"q{len(self.price_boundaries)}"
 
@@ -305,8 +368,8 @@ def _value_variants(attribute: str, value: str) -> tuple[str, ...]:
     variants = [normalized]
     if len(terms) == 1:
         variants.append(terms[0])
-    elif len(terms) <= 5 and attribute not in {"brand", "category"}:
-        variants.extend(term for term in terms if len(term) >= 3)
+    elif len(terms) < MAX_ATTRIBUTE_VALUE_TERMS and attribute not in {"brand", "category"}:
+        variants.extend(term for term in terms if len(term) >= MIN_INFERRED_TERM_CHARS)
     return tuple(dict.fromkeys(variant for variant in variants if variant))
 
 
@@ -314,8 +377,8 @@ def _usable_value(phrase: str, terms: tuple[str, ...]) -> bool:
     return (
         bool(terms)
         and phrase not in _VALUE_NOISE
-        and len(phrase) <= 100
-        and len(terms) <= 6
+        and len(phrase) <= MAX_ATTRIBUTE_VALUE_CHARS
+        and len(terms) <= MAX_ATTRIBUTE_VALUE_TERMS
         and not all(term.isdigit() for term in terms)
     )
 
@@ -325,7 +388,7 @@ def _log_quantile_boundaries(prices: list[float]) -> tuple[float, ...]:
         return ()
     logs = sorted(math.log(value) for value in prices if value > 0)
     boundaries: list[float] = []
-    for fraction in (0.10, 0.25, 0.50, 0.75, 0.90):
+    for fraction in PRICE_QUANTILES:
         index = min(len(logs) - 1, round((len(logs) - 1) * fraction))
         value = math.exp(logs[index])
         if not boundaries or value > boundaries[-1]:
@@ -342,7 +405,13 @@ def _answerability_prior(coverage: float, counts: Counter[str]) -> float:
     """
 
     total_mentions = sum(counts.values())
-    repeated_mentions = sum(count for count in counts.values() if count >= 2)
+    repeated_mentions = sum(count for count in counts.values() if count >= MIN_REPEAT_SUPPORT)
     repeat_support = repeated_mentions / total_mentions if total_mentions else coverage
     evidence = math.sqrt(max(0.0, coverage * repeat_support))
-    return min(0.95, max(0.35, 0.35 + 0.60 * evidence))
+    return min(
+        ANSWERABILITY_CEILING,
+        max(
+            ANSWERABILITY_FLOOR,
+            ANSWERABILITY_FLOOR + ANSWERABILITY_EVIDENCE_WEIGHT * evidence,
+        ),
+    )

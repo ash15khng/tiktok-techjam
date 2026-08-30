@@ -29,24 +29,57 @@ NO_PREFERENCE_RE = re.compile(
     r"(?:don['’]?t|do\s+not)\s+have\s+(?:an?\s+|any\s+)?(?:additional\s+)?preference\s+for\s+([a-z_]+)",
     re.IGNORECASE,
 )
+OVERRIDE_RE = re.compile(
+    r"\b(?:actually|instead|ignore\s+(?:my\s+)?earlier|make\s+it)\b",
+    re.IGNORECASE,
+)
+NEGATIVE_FEEDBACK_RE = re.compile(
+    r"\b(?:not\s+quite\s+right|ask\s+me\s+about|no\s+preference|"
+    r"don['’]?t\s+have)\b",
+    re.IGNORECASE,
+)
+CONTEXTUAL_NO_PREFERENCE_RE = re.compile(
+    r"\b(?:no\s+preference|either\s+is\s+fine|use\s+your\s+judgment)\b",
+    re.IGNORECASE,
+)
+EXPLORING_TAIL_RE = re.compile(
+    r"^(?:but\s+)?(?:i['’]?m|i\s+am)\s+still\s+exploring\.?$",
+    re.IGNORECASE,
+)
+SPECIFIC_ATTRIBUTE_PROMPT_RE = re.compile(
+    r"ask\s+me\s+about\s+one\s+specific\s+attribute",
+    re.IGNORECASE,
+)
+CATALOG_EXCLUSION_RE = re.compile(
+    r"(?:not|without|avoid|anything\s+but)\s+(.+)",
+    re.IGNORECASE,
+)
+CUSTOMER_EXCLUSION_RE = re.compile(
+    r"(?:not|no|without|avoid|anything\s+but|i\s+don['’]?t\s+want)\s+(.+)",
+    re.IGNORECASE,
+)
+WHITESPACE_RE = re.compile(r"\s+")
+LEADING_CONNECTOR_RE = re.compile(r"^(?:but|and)\s+", re.IGNORECASE)
+PREFERENCE_PREFIX_RE = re.compile(
+    r"^(?:actually\s+)?(?:please\s+)?(?:i(?:'d|\s+would)?\s+prefer|i\s+prefer|"
+    r"preferably|ideally|make\s+it|with)\s+",
+    re.IGNORECASE,
+)
+TRAILING_INSTEAD_RE = re.compile(r"\s+instead$", re.IGNORECASE)
+CUSTOMER_CLAUSE_SEPARATOR_RE = re.compile(r"\s*[,;]\s*")
+
 
 def _clean_phrase(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip(" -;,.:\t\r\n")
+    return WHITESPACE_RE.sub(" ", value).strip(" -;,.:\t\r\n")
 
 
 def _clean_customer_clause(value: str) -> str:
     cleaned = _clean_phrase(value)
     if cleaned.casefold() in {"actually", "please"}:
         return ""
-    cleaned = re.sub(r"^(?:but|and)\s+", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(
-        r"^(?:actually\s+)?(?:please\s+)?(?:i(?:'d|\s+would)?\s+prefer|i\s+prefer|"
-        r"preferably|ideally|make\s+it|with)\s+",
-        "",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    cleaned = re.sub(r"\s+instead$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = LEADING_CONNECTOR_RE.sub("", cleaned)
+    cleaned = PREFERENCE_PREFIX_RE.sub("", cleaned)
+    cleaned = TRAILING_INSTEAD_RE.sub("", cleaned)
     return _clean_phrase(cleaned)
 
 
@@ -55,12 +88,22 @@ def _split_customer_tail(value: str) -> tuple[str, ...]:
 
     return tuple(
         clause
-        for clause in (_clean_customer_clause(part) for part in re.split(r"\s*[,;]\s*", value))
+        for clause in (
+            _clean_customer_clause(part)
+            for part in CUSTOMER_CLAUSE_SEPARATOR_RE.split(value)
+        )
         if clause
     )
 
 
 class MessageInterpreter:
+    """Convert one customer message into immutable, typed state proposals.
+
+    ``parse_deterministic`` never performs network I/O. ``enrich_with_semantics``
+    may add locally grounded model hints, but it cannot remove deterministic
+    evidence or introduce catalog identifiers.
+    """
+
     def __init__(
         self,
         semantic_parser: SemanticParser | None = None,
@@ -85,10 +128,8 @@ class MessageInterpreter:
 
         raw = str(message or "")
         lowered = normalize_text(raw)
-        override = bool(re.search(r"\b(?:actually|instead|ignore\s+(?:my\s+)?earlier|make\s+it)\b", lowered))
-        negative_feedback = bool(
-            re.search(r"\b(?:not\s+quite\s+right|ask\s+me\s+about|no\s+preference|don['’]?t\s+have)\b", lowered)
-        )
+        override = bool(OVERRIDE_RE.search(lowered))
+        negative_feedback = bool(NEGATIVE_FEEDBACK_RE.search(lowered))
         no_preference: Attribute | None = None
         no_preference_match = NO_PREFERENCE_RE.search(raw)
         if no_preference_match:
@@ -96,7 +137,7 @@ class MessageInterpreter:
                 no_preference = Attribute(no_preference_match.group(1).casefold())
             except ValueError:
                 no_preference = Attribute.OTHER
-        elif re.search(r"\b(?:no\s+preference|either\s+is\s+fine|use\s+your\s+judgment)\b", lowered):
+        elif CONTEXTUAL_NO_PREFERENCE_RE.search(lowered):
             try:
                 no_preference = Attribute(last_ask_attribute) if last_ask_attribute else Attribute.OTHER
             except ValueError:
@@ -123,12 +164,7 @@ class MessageInterpreter:
         elif category_match:
             raw_tail = raw[category_match.end():]
             tail = _clean_phrase(raw_tail)
-            tail = re.sub(
-                r"^(?:but\s+)?(?:i['’]?m|i\s+am)\s+still\s+exploring\.?$",
-                "",
-                tail,
-                flags=re.IGNORECASE,
-            )
+            tail = EXPLORING_TAIL_RE.sub("", tail)
             if tail and not no_preference:
                 # Evaluator/catalog-derived opening evidence follows a period
                 # and may contain meaningful commas inside one product feature.
@@ -138,22 +174,18 @@ class MessageInterpreter:
                     preferences.append(tail)
                 else:
                     preferences.extend(_split_customer_tail(tail))
-        elif not no_preference and not re.search(r"ask\s+me\s+about\s+one\s+specific\s+attribute", lowered):
+        elif not no_preference and not SPECIFIC_ATTRIBUTE_PROMPT_RE.search(lowered):
             preferences.extend(_split_customer_tail(raw))
 
         exclusions: list[str] = []
         retained_preferences: list[str] = []
         for phrase in preferences:
-            negative_prefix = (
-                r"(?:not|without|avoid|anything\s+but)\s+(.+)"
+            exclusion_pattern = (
+                CATALOG_EXCLUSION_RE
                 if payload_match or catalog_style_tail
-                else r"(?:not|no|without|avoid|anything\s+but|i\s+don['’]?t\s+want)\s+(.+)"
+                else CUSTOMER_EXCLUSION_RE
             )
-            negative = re.match(
-                negative_prefix,
-                phrase,
-                re.IGNORECASE,
-            )
+            negative = exclusion_pattern.match(phrase)
             if negative:
                 exclusions.append(_clean_phrase(negative.group(1)))
             else:
