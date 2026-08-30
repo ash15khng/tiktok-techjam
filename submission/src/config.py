@@ -71,6 +71,30 @@ class AgentConfig:
     rerank_rrf_weight: float = 0.52
     rerank_idf_coverage_weight: float = 0.36
     rerank_exact_phrase_weight: float = 0.12
+    # When enabled, a secondary stage reorders only frozen Top-10 IDs. Existing
+    # membership signals remain intact because removing their weak priors delayed
+    # public working-fold hits; this flag contains only the additional stage.
+    membership_preserving_ordering: bool = True
+    # Raising this value promotes products containing complete disclosed phrases;
+    # lowering it preserves the relevance order more strictly. Zero disables the
+    # pool scan. A 0.15 experiment added latency and did not improve the retained
+    # combined candidate, so zero is the current measured setting.
+    phrase_rarity_order_weight: float = 0.0
+    # More pool candidates yield a steadier rarity estimate but add string scans;
+    # fewer reduce latency but can mistake a common phrase for a rare one.
+    phrase_rarity_pool_depth: int = 50
+    # Longer phrases preserve verbose evidence but increase drift and scan cost;
+    # shorter phrases are cheaper but less discriminative.
+    phrase_rarity_max_terms: int = 12
+    # These weights affect order only after Top-10 membership is frozen. Raising
+    # either promotes the corresponding weak prior without changing HitRate@10;
+    # zero preserves the relevance order. Both require isolated validation.
+    ordering_popularity_weight: float = 0.05
+    ordering_profile_weight: float = 0.0
+    # Enabling this lets a weak catalog prior reorder corrected intents; leaving
+    # it false protects explicit override evidence. The safer false setting is
+    # retained unless target-disjoint override results improve.
+    ordering_popularity_during_override: bool = False
     profile_score_cap: float = 0.03
     popularity_weight: float = 0.18
     popularity_count_cap: int = 20_000

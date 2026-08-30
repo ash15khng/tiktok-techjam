@@ -92,6 +92,7 @@ class DialogAndFusionTest(unittest.TestCase):
         )
 
         self.assertEqual(state.recommendation_exposure, set())
+        self.assertTrue(state.intent_override_active)
 
     def test_rrf_combines_routes_and_retains_ranks(self) -> None:
         results = {

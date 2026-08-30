@@ -81,6 +81,7 @@ class SessionState:
     recommendation_exposure: set[str] = field(default_factory=set)
     turn_count: int = 0
     last_feedback_negative: bool = False
+    intent_override_active: bool = False
     clarification_outcomes: dict[str, str] = field(default_factory=dict)
     semantic_call_count: int = 0
 

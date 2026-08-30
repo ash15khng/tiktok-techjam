@@ -32,6 +32,7 @@ from submission.src.dialog.models import SessionState
 from submission.src.dialog.store import SessionStore
 from submission.src.ranking.explanations import explain
 from submission.src.ranking.exposure import unseen_first
+from submission.src.ranking.ordering import FrozenTopKOrderer
 from submission.src.ranking.reranker import LightweightReranker
 from submission.src.retrieval.fusion import assess_results, reciprocal_rank_fusion
 from submission.src.retrieval.lexical import LexicalRetriever
@@ -65,6 +66,7 @@ class ShoppingAgent:
         self.planner = RetrievalPlanner(self.config)
         self.retriever = LexicalRetriever(self.catalog, self.config)
         self.reranker = LightweightReranker(self.catalog, self.config)
+        self.frozen_orderer = FrozenTopKOrderer(self.catalog, self.config)
         self.question_policy = QuestionPolicy(self.catalog, self.config)
         self.semantic_escalation = SemanticEscalationPolicy(self.config)
         self.guard = ResponseGuard(self.catalog.valid_ids, self.catalog.popular)
@@ -139,6 +141,15 @@ class ShoppingAgent:
                         # Rerank once because semantic evidence changed Active State.
                         assessment, ranked = self._retrieve_and_rank(state)
             ranked = unseen_first(ranked, state.recommendation_exposure)
+            ranked = self.frozen_orderer.order(
+                ranked,
+                state.active,
+                state.customer_profile,
+                allow_popularity=(
+                    self.config.ordering_popularity_during_override
+                    or not state.intent_override_active
+                ),
+            )
             question = self.question_policy.choose(
                 state,
                 ranked,

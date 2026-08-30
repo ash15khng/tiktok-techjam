@@ -39,6 +39,7 @@ class StateReducer:
         if frame.override or any(update.operation == "set_any" for update in frame.slot_updates):
             active.search_rewrites.clear()
         if frame.override:
+            state.intent_override_active = True
             # clears past recommendation
             state.recommendation_exposure.clear()
             if frame.category_phrases:
