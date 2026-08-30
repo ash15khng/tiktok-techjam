@@ -5,6 +5,7 @@ import json
 import random
 import re
 import statistics
+import time
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -223,7 +224,13 @@ def evaluate(
     sessions: list[dict] = []
     total_prompt_tokens = 0
     total_completion_tokens = 0
-    for sample in samples:
+    total_samples = len(samples)
+    start_time = time.time()
+    hits_count = 0
+
+    print(f"\n🚀 Starting evaluation across {total_samples} samples...\n", flush=True)
+
+    for idx, sample in enumerate(samples, 1):
         session_id = f"public_{uuid.uuid4().hex}"
         agent.reset(session_id, sample["user_profile"])
         target = str(sample["ground_truth"]["parent_asin"])
@@ -235,7 +242,25 @@ def evaluate(
         user_message = initial_message(effective_sample, coarse_category(categories.get(target, [])), disclosed)
         hit_turn: int | None = None
         best_rank: int | None = None
+
+        sample_id = sample.get("sample_id", f"sample_{idx}")
+        scenario = sample.get("scenario_type", "")
+
         for turn in range(1, MAX_TURNS + 1):
+            elapsed = time.time() - start_time
+            rate = idx / max(elapsed, 0.001)
+            eta_secs = int((total_samples - idx) / max(rate, 0.01))
+            eta_str = f"{eta_secs // 60:02d}:{eta_secs % 60:02d}"
+            hr_str = f"{(hits_count / max(1, idx - 1)):.1%}" if idx > 1 else "--"
+
+            # Dynamic live indicator
+            print(
+                f"\r[{idx:3d}/{total_samples}] {sample_id:<12} ({scenario:<15}) | "
+                f"Turn {turn:2d}/10 | Running HR: {hr_str:>6} | ETA: {eta_str}",
+                end="",
+                flush=True,
+            )
+
             try:
                 response = agent.respond(session_id, user_message, turn, TOP_K)
             except Exception:
@@ -266,6 +291,10 @@ def evaluate(
                 user_message, boundary_used = customer_reply(
                     effective_sample, response.get("ask_attribute"), disclosed, boundary_used
                 )
+
+        if hit_turn is not None:
+            hits_count += 1
+
         sessions.append({
             "sample_id": sample["sample_id"],
             "scenario_type": sample["scenario_type"],
@@ -274,6 +303,9 @@ def evaluate(
             "best_rank": best_rank,
             "reciprocal_rank": 0.0 if best_rank is None else 1.0 / best_rank,
         })
+
+    total_time = time.time() - start_time
+    print(f"\n\n✅ Evaluation finished in {total_time:.2f}s ({total_samples / total_time:.1f} samples/s)\n", flush=True)
 
     overall = metric_summary(sessions)
     efficiency = max(0.0, min(1.0, (11.0 - float(overall["mttc"])) / 10.0))

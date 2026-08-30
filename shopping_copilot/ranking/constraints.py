@@ -8,6 +8,27 @@ from shopping_copilot.dialog.models import ActiveConstraint
 from shopping_copilot.understanding.models import Attribute, Relation
 
 
+WORD_TOKEN_RE = re.compile(r"[\w\d]+")
+
+
+def _matches_any_value(target_val: str, candidate_vals: frozenset[str] | set[str]) -> bool:
+    v_clean = target_val.lower().strip()
+    v_tokens = {t for t in WORD_TOKEN_RE.findall(v_clean) if len(t) > 1}
+
+    for cv in candidate_vals:
+        cv_clean = cv.lower().strip()
+        # 1. Exact or substring matching in both directions
+        if v_clean == cv_clean or v_clean in cv_clean or cv_clean in v_clean:
+            return True
+        # 2. Token intersection matching
+        cv_tokens = {t for t in WORD_TOKEN_RE.findall(cv_clean) if len(t) > 1}
+        if v_tokens and cv_tokens:
+            overlap = v_tokens & cv_tokens
+            if len(overlap) >= max(1, min(len(v_tokens), len(cv_tokens)) // 2):
+                return True
+    return False
+
+
 def evaluate_constraint(
     record: ProductRecord,
     constraint: ActiveConstraint,
@@ -48,48 +69,33 @@ def evaluate_constraint(
 
     attr_name = constraint.attribute.value
     prod_values = record.attributes.get(attr_name)
+
+    if constraint.relation == Relation.NEQ:
+        # Exclusion evaluation
+        if prod_values and any(_matches_any_value(v, prod_values) for v in constraint.values):
+            return "contradiction"
+        # Check text fields lazily for exclusion
+        title_lower = record.search_fields.get("title", "").lower()
+        features_lower = record.search_fields.get("features", "").lower()
+        details_lower = record.search_fields.get("details", "").lower()
+        all_text = f"{title_lower} {features_lower} {details_lower}"
+        if any(v.lower().strip() in all_text for v in constraint.values if len(v.strip()) > 2):
+            return "contradiction"
+        return "match"
+
+    # Positive constraint evaluation
+    if prod_values and any(_matches_any_value(v, prod_values) for v in constraint.values):
+        return "match"
+
+    # Check search fields (title, features, details) lazily
     title_lower = record.search_fields.get("title", "").lower()
     features_lower = record.search_fields.get("features", "").lower()
     details_lower = record.search_fields.get("details", "").lower()
     all_text = f"{title_lower} {features_lower} {details_lower}"
 
-    def _matches_any_value(target_val: str, candidate_vals: frozenset[str] | set[str]) -> bool:
-        v_clean = target_val.lower().strip()
-        v_tokens = {t for t in re.findall(r"[\w\d]+", v_clean) if len(t) > 1}
-
-        for cv in candidate_vals:
-            cv_clean = cv.lower().strip()
-            # 1. Exact or substring matching in both directions
-            if v_clean == cv_clean or v_clean in cv_clean or cv_clean in v_clean:
-                return True
-            # 2. Token intersection matching
-            cv_tokens = {t for t in re.findall(r"[\w\d]+", cv_clean) if len(t) > 1}
-            if v_tokens and cv_tokens:
-                # If significant token overlap (or single key token matches)
-                overlap = v_tokens & cv_tokens
-                if len(overlap) >= max(1, min(len(v_tokens), len(cv_tokens)) // 2):
-                    return True
-        return False
-
-    if constraint.relation == Relation.NEQ:
-        # Exclusion evaluation
-        has_excluded = False
-        if prod_values:
-            has_excluded = any(_matches_any_value(v, prod_values) for v in constraint.values)
-        if not has_excluded:
-            # Check text fields for exclusion
-            has_excluded = any(v.lower().strip() in all_text for v in constraint.values if len(v.strip()) > 2)
-        return "contradiction" if has_excluded else "match"
-
-    # Positive constraint evaluation
-    if prod_values:
-        if any(_matches_any_value(v, prod_values) for v in constraint.values):
-            return "match"
-
-    # Check search fields (title, features, details)
     for v in constraint.values:
         v_clean = v.lower().strip()
-        v_tokens = [t for t in re.findall(r"[\w\d]+", v_clean) if len(t) > 2]
+        v_tokens = [t for t in WORD_TOKEN_RE.findall(v_clean) if len(t) > 2]
         if v_clean in all_text or (v_tokens and any(t in all_text for t in v_tokens)):
             return "match"
 
