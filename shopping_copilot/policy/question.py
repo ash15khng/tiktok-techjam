@@ -125,12 +125,16 @@ class QuestionPolicy:
 
             # Information gain = Gini * coverage
             gain = gini * min(1.0, coverage)
+            if gain > best_gain:
+                best_gain = gain
+                best_attr = attr_str
 
-        # If gain is negligible, fall back to generalized domain attribute priority for turns 1-9
-        if best_gain < 0.10:
+        # If gain is negligible, fall back to generalized domain attribute priority
+        if best_gain < 0.05:
+            # Check user profile or category context for smarter fallback
             priority_order = (
-                "material", "color", "style", "brand", "budget",
-                "use_case", "size", "feature", "other",
+                "material", "color", "style", "feature", "budget",
+                "use_case", "size", "brand", "other",
             )
             for fallback_candidate in priority_order:
                 if fallback_candidate in eligible:
