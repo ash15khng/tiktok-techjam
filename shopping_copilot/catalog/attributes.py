@@ -65,6 +65,7 @@ _CUE_PATTERNS = (
 _SIZE_KEY_EXCLUSIONS = frozenset(
     {"package", "dimension", "dimensions", "screen", "file", "assembled", "weight", "map"}
 )
+_INFERABLE_ATTRIBUTES = frozenset(("material", "color", "size", "style", "use_case"))
 _VALUE_NOISE = frozenset(
     {"", "n/a", "na", "none", "no", "unknown", "other", "default", "not applicable", "one", "type"}
 )
@@ -148,6 +149,14 @@ class CatalogAttributeRegistry:
             6,
             max((len(tokenize(value, drop_stopwords=False)) for value in self._phrase_attributes), default=1),
         )
+        self._inference_prefixes: set[tuple[str, ...]] = set()
+        for phrase, attributes in self._phrase_attributes.items():
+            if not any(attribute in _INFERABLE_ATTRIBUTES for attribute in attributes):
+                continue
+            phrase_terms = tokenize(phrase, drop_stopwords=False)
+            self._inference_prefixes.update(
+                phrase_terms[:width] for width in range(1, len(phrase_terms) + 1)
+            )
         self.price_boundaries = _log_quantile_boundaries(prices)
         self._baseline_answerability = {
             attribute: _answerability_prior(
@@ -202,18 +211,28 @@ class CatalogAttributeRegistry:
     @lru_cache(maxsize=4096)
     def _inferred_values_for_product(self, parent_asin: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
         text_terms = tokenize(self.products[parent_asin].search_text, drop_stopwords=False)
-        maximum = min(len(text_terms), self._max_value_terms)
-        inferred: dict[str, list[str]] = defaultdict(list)
-        inferable = {"material", "color", "size", "style", "use_case"}
-        for width in range(maximum, 0, -1):
-            for index in range(len(text_terms) - width + 1):
-                phrase = " ".join(text_terms[index : index + width])
+        matches: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
+        for start in range(len(text_terms)):
+            maximum_end = min(len(text_terms), start + self._max_value_terms)
+            for end in range(start + 1, maximum_end + 1):
+                phrase_terms = text_terms[start:end]
+                if phrase_terms not in self._inference_prefixes:
+                    break
+                phrase = " ".join(phrase_terms)
                 for attribute in self._phrase_attributes.get(phrase, ()):
-                    if attribute in inferable:
-                        inferred[attribute].append(phrase)
+                    if attribute in _INFERABLE_ATTRIBUTES:
+                        matches[attribute].append((len(phrase_terms), start, phrase))
         return tuple(
-            (attribute, tuple(dict.fromkeys(values)))
-            for attribute, values in inferred.items()
+            (
+                attribute,
+                tuple(
+                    dict.fromkeys(
+                        phrase
+                        for _, _, phrase in sorted(values, key=lambda item: (-item[0], item[1]))
+                    )
+                ),
+            )
+            for attribute, values in matches.items()
         )
 
     def representative_value(self, parent_asin: str, attribute: str) -> str | None:

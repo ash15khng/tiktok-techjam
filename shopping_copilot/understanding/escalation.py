@@ -53,7 +53,12 @@ class SemanticEscalationPolicy:
             return self._record(True, "ambiguous_category")
 
         if (
-            should_call_semantic_parser(frame.raw_message)
+            should_call_semantic_parser(
+                frame.raw_message,
+                has_fallback_span=any(
+                    update.source == "fallback" for update in frame.slot_updates
+                ),
+            )
             and assessment.top10_stability < self.config.semantic_low_stability_threshold
         ):
             return self._record(True, "difficult_language_low_stability")

@@ -60,6 +60,13 @@ class CatalogAttributeRegistryTest(unittest.TestCase):
                 store="South Star",
                 price=119.0,
             ),
+            "C": product(
+                "C",
+                title="Cerulean linen commuter shoe",
+                details=(),
+                store="",
+                price=None,
+            ),
         }
         self.registry = CatalogAttributeRegistry(self.products)
 
@@ -75,6 +82,10 @@ class CatalogAttributeRegistryTest(unittest.TestCase):
 
         self.assertIn("42 long", size_values)
         self.assertNotIn("10 x 5 x 2 inches", size_values)
+
+    def test_catalog_values_are_inferred_from_unstructured_product_text(self) -> None:
+        self.assertIn("cerulean", self.registry.values_for_product("C", "color"))
+        self.assertIn("linen", self.registry.values_for_product("C", "material"))
 
     def test_interpreter_covers_contract_attributes_with_catalog_native_values(self) -> None:
         interpreter = MessageInterpreter(attribute_resolver=self.registry)

@@ -27,15 +27,10 @@ from shopping_copilot.contracts import (
 from shopping_copilot.environment import load_runtime_environment
 
 
-SUBJECTIVE_LANGUAGE_RE = re.compile(
-    r"\b(?:comfortable|comfort|polished|professional|versatile|stylish|subtle|"
-    r"bold|durable|lightweight|breathable|premium|minimal|modest|formal|casual|"
-    r"gift|occasion|commute|travel|humid|rainy|warm|cold|everyday)\b",
-    re.IGNORECASE,
-)
 IMPLICIT_OUTCOME_RE = re.compile(
     r"\b(?:can(?:not|'t)|won't|wouldn't|makes?\s+my|feels?\s+like|reacts?\s+to|"
-    r"enough\s+to|so\s+(?:that\s+)?i\s+can|after\s+(?:a\s+)?long)\b",
+    r"enough\s+to|so\s+(?:that\s+)?i\s+can|after\s+(?:a\s+)?long|"
+    r"because|for\s+someone\s+who)\b",
     re.IGNORECASE,
 )
 DETERMINISTIC_REPLY_RE = re.compile(
@@ -100,17 +95,19 @@ budget are never structured hypotheses. Local deterministic grounding is final.
 """
 
 
-def should_call_semantic_parser(message: str) -> bool:
-    """Cost gate for language the deterministic rules are least suited to."""
+def should_call_semantic_parser(message: str, *, has_fallback_span: bool = False) -> bool:
+    """Cost gate based on parse gaps and language structure, not value lists."""
 
     if DETERMINISTIC_REPLY_RE.search(message):
         return False
     terms = tokenize(message, drop_stopwords=False)
-    has_complex_connector = bool(re.search(r"\b(?:although|however|while|but|something\s+for)\b", message, re.I))
+    has_complex_connector = bool(
+        re.search(r"\b(?:although|however|while|but|rather\s+than|something\s+for)\b", message, re.I)
+    )
     return (
-        bool(SUBJECTIVE_LANGUAGE_RE.search(message))
+        has_fallback_span
         or bool(IMPLICIT_OUTCOME_RE.search(message))
-        or (len(terms) >= 16 and has_complex_connector)
+        or (len(terms) >= 8 and has_complex_connector)
     )
 
 

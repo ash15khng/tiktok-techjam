@@ -82,6 +82,25 @@ class SemanticEscalationPolicyTest(unittest.TestCase):
         self.assertFalse(decision.should_call)
         self.assertEqual(decision.reason, "short_or_contextual")
 
+    def test_unseen_subjective_words_escalate_from_fallback_and_instability(self) -> None:
+        frame = self.interpreter.parse_deterministic(
+            "I need boots. They should feel zephyric yet boardroom-ready all day.",
+            last_ask_attribute=None,
+        )
+        active = ActiveState(
+            category_phrases=list(frame.category_phrases),
+            preference_phrases=list(frame.preference_phrases),
+        )
+
+        decision = self.policy.decide(
+            frame,
+            active,
+            RetrievalAssessment(200, 0.01, 0.025),
+        )
+
+        self.assertTrue(decision.should_call)
+        self.assertEqual(decision.reason, "difficult_language_low_stability")
+
 
 if __name__ == "__main__":
     unittest.main()

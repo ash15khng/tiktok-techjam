@@ -184,9 +184,9 @@ class SemanticParserTest(unittest.TestCase):
         provider = CountingProvider()
         parser = GatedSemanticParser(provider, max_calls=1, cache_size=2)
 
-        first = parser.interpret("comfortable everyday shoes", "category=shoes")
-        cached = parser.interpret("comfortable everyday shoes", "category=shoes")
-        budgeted = parser.interpret("stylish formal shoes", "category=shoes")
+        first = parser.interpret("shoes that feel like walking on pillows", "category=shoes")
+        cached = parser.interpret("shoes that feel like walking on pillows", "category=shoes")
+        budgeted = parser.interpret("shoes for someone who stands all day", "category=shoes")
 
         self.assertEqual(provider.calls, 1)
         self.assertEqual(first.prompt_tokens, 11)
