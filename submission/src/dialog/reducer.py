@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from submission.src.dialog.models import SessionState
 from submission.src.understanding.models import IntentFrame
+
+
+BROAD_PREFERENCE_OVERRIDE_RE = re.compile(
+    r"\b(?:ignore|forget)\s+(?:my\s+)?(?:earlier|previous)\s+preference\b",
+    re.IGNORECASE,
+)
 
 
 def _append_unique(values: list[str], additions: tuple[str, ...]) -> None:
@@ -20,6 +28,9 @@ class StateReducer:
 
         self._record_clarification_outcome(state, frame)
         active = state.active
+        broad_preference_override = bool(BROAD_PREFERENCE_OVERRIDE_RE.search(frame.raw_message))
+        if frame.override or any(update.operation == "set_any" for update in frame.slot_updates):
+            active.search_rewrites.clear()
         if frame.override:
             # clears past recommendation
             state.recommendation_exposure.clear()
@@ -27,7 +38,10 @@ class StateReducer:
                 active.preference_phrases.clear()
                 active.exclusions.clear()
                 active.slot_values.clear()
-            elif active.preference_phrases: # clears only observed attribute override
+                active.suppressed_attributes.clear()
+                active.asked_attributes.clear()
+                state.clarification_outcomes.clear()
+            elif broad_preference_override and active.preference_phrases:
                 stale = active.preference_phrases.pop(0)
                 for attribute, values in tuple(active.slot_values.items()):
                     active.slot_values[attribute] = [value for value in values if value != stale]
@@ -42,19 +56,29 @@ class StateReducer:
 
         _append_unique(
             active.preference_phrases,
-            (*frame.preference_phrases, *frame.query_rewrites),
+            frame.preference_phrases,
         )
+        if frame.query_rewrites:
+            active.search_rewrites[:] = list(dict.fromkeys(frame.query_rewrites))
         _append_unique(active.exclusions, frame.exclusions) # exclusion items
 
         for update in frame.slot_updates:
             attribute = update.attribute.value
             if update.operation == "set_any": # no preference for this attribute, e.g. "I don't care about color"
-                active.slot_values.pop(attribute, None)
+                stale_values = active.slot_values.pop(attribute, [])
+                active.preference_phrases[:] = [
+                    value for value in active.preference_phrases if value not in stale_values
+                ]
                 active.suppressed_attributes.add(attribute)
                 continue
             if update.operation == "exclude":
                 continue
             if update.operation == "replace":
+                stale_values = active.slot_values.get(attribute, [])
+                if not broad_preference_override:
+                    active.preference_phrases[:] = [
+                        value for value in active.preference_phrases if value not in stale_values
+                    ]
                 active.slot_values[attribute] = [update.value]
             else:
                 values = active.slot_values.setdefault(attribute, [])
@@ -86,16 +110,44 @@ class StateReducer:
         """Apply only grounded semantic additions without advancing the turn."""
 
         active = state.active
-        before_preferences = len(active.preference_phrases)
-        _append_unique(active.preference_phrases, frame.query_rewrites)
-        changed = len(active.preference_phrases) != before_preferences
+        previous_rewrites = tuple(active.search_rewrites)
+        if frame.query_rewrites:
+            active.search_rewrites[:] = list(dict.fromkeys(frame.query_rewrites))
+        changed = previous_rewrites != tuple(active.search_rewrites)
         for update in frame.slot_updates:
             if update.source != "semantic":
                 continue
-            before_preferences = len(active.preference_phrases)
-            _append_unique(active.preference_phrases, (update.value,))
-            changed = changed or len(active.preference_phrases) != before_preferences
             attribute = update.attribute.value
+            if update.operation == "set_any":
+                stale_values = active.slot_values.pop(attribute, [])
+                active.preference_phrases[:] = [
+                    value for value in active.preference_phrases if value not in stale_values
+                ]
+                changed = changed or bool(stale_values) or attribute not in active.suppressed_attributes
+                active.suppressed_attributes.add(attribute)
+                continue
+            if update.operation == "exclude":
+                before = len(active.exclusions)
+                _append_unique(active.exclusions, (update.value,))
+                changed = changed or len(active.exclusions) != before
+                continue
+            if attribute == "category":
+                if update.operation == "replace":
+                    changed = changed or active.category_phrases != [update.value]
+                    active.category_phrases[:] = [update.value]
+                else:
+                    before = len(active.category_phrases)
+                    _append_unique(active.category_phrases, (update.value,))
+                    changed = changed or len(active.category_phrases) != before
+            else:
+                if update.operation == "replace":
+                    stale_values = active.slot_values.get(attribute, [])
+                    active.preference_phrases[:] = [
+                        value for value in active.preference_phrases if value not in stale_values
+                    ]
+                before_preferences = len(active.preference_phrases)
+                _append_unique(active.preference_phrases, (update.value,))
+                changed = changed or len(active.preference_phrases) != before_preferences
             if update.operation == "replace":
                 previous = active.slot_values.get(attribute)
                 active.slot_values[attribute] = [update.value]

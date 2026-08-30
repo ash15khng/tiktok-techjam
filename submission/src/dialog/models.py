@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass, field
 
 from submission.src.catalog.normalization import tokenize
@@ -15,6 +17,7 @@ class ActiveState:
     preference_phrases: list[str] = field(default_factory=list) # e.g. ["red", "Nike", "size 10"]
     exclusions: list[str] = field(default_factory=list) # e.g. ["no leather", "not black"]
     slot_values: dict[str, list[str]] = field(default_factory=dict) # e.g. {"color": ["red", "blue"], "size": ["10"]}
+    search_rewrites: list[str] = field(default_factory=list) # current LLM-expanded catalog queries
     suppressed_attributes: set[str] = field(default_factory=set) # e.g. {"brand", "budget"}
     asked_attributes: list[str] = field(default_factory=list) # e.g. ["color", "size"]
 
@@ -37,22 +40,29 @@ class ActiveState:
         )
 
     def query_terms(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys((*self.preference_terms(), *self.category_terms())))
+        rewrite_terms = tuple(
+            token
+            for rewrite in self.search_rewrites
+            for token in tokenize(rewrite)
+        )
+        return tuple(
+            dict.fromkeys((*self.preference_terms(), *self.category_terms(), *rewrite_terms))
+        )
 
-    def context_snapshot(self) -> str:
-        """Return compact active evidence for the optional semantic provider."""
+    def context_snapshot(self, *, last_ask_attribute: str | None = None) -> str:
+        """Return compact structured state for a stateless semantic request."""
 
-        parts = [
-            f"category={'; '.join(self.category_phrases)}" if self.category_phrases else "",
-            f"preferences={'; '.join(self.preference_phrases)}" if self.preference_phrases else "",
-            f"exclusions={'; '.join(self.exclusions)}" if self.exclusions else "",
-            (
-                f"declined={','.join(sorted(self.suppressed_attributes))}"
-                if self.suppressed_attributes
-                else ""
-            ),
-        ]
-        return " | ".join(part for part in parts if part)
+        return json.dumps(
+            {
+                "category": self.category_phrases,
+                "positive_constraints": self.slot_values,
+                "exclusions": self.exclusions,
+                "unrestricted_fields": sorted(self.suppressed_attributes),
+                "last_question_field": last_ask_attribute,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
 
 
 @dataclass

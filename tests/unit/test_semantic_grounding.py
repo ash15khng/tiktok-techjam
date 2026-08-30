@@ -8,6 +8,31 @@ from submission.src.understanding.semantic_grounding import ground_semantic_inte
 
 
 class SemanticGroundingTest(unittest.TestCase):
+    def test_grounded_hard_field_clear_and_replacement_are_retained(self) -> None:
+        semantic = SemanticInterpretation(
+            slot_hypotheses=(
+                SemanticSlotHypothesis(
+                    "color", "black", 0.70, "make the shoes black", "replace"
+                ),
+                SemanticSlotHypothesis("budget", "", 0.70, "no budget", "set_any"),
+            ),
+        )
+
+        grounded = ground_semantic_interpretation(
+            semantic,
+            raw_message="No budget, actually make the shoes black.",
+            context='{"category":["shoes"]}',
+            deterministic_updates=(),
+            override=True,
+            min_confidence=0.55,
+            max_rewrite_terms=12,
+        )
+
+        self.assertEqual(
+            [(item.attribute.value, item.operation, item.value) for item in grounded.slot_updates],
+            [("color", "replace", "black"), ("budget", "set_any", "")],
+        )
+
     def test_keeps_anchored_rewrites_and_soft_evidence_but_rejects_unsafe_hints(self) -> None:
         semantic = SemanticInterpretation(
             query_rewrites=(

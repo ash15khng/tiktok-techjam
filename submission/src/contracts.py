@@ -26,12 +26,18 @@ CONTRACT_MAX_RECOMMENDATIONS = 10
 
 @dataclass(frozen=True)
 class SemanticSlotHypothesis:
-    """Soft model proposal that still requires deterministic grounding."""
+    """Grounded state-operation proposal returned by the optional model.
+
+    ``operation`` defaults to ``add`` for compatibility with lightweight local
+    parsers. Provider output may also request ``replace``, ``exclude``, or
+    ``set_any``; all operations are validated before state mutation.
+    """
 
     attribute: str
     value: str
     confidence: float
     evidence: str
+    operation: str = "add"
 
 
 @dataclass(frozen=True)

@@ -136,9 +136,15 @@ class AttributeValueResolver(Protocol):
     def candidate_attributes(self, text: str, *, preferred: str | None = None) -> tuple[str, ...]:
         """Return catalog-supported attributes for a value phrase."""
 
+    def matched_values(self, text: str) -> tuple[tuple[str, str], ...]:
+        """Return longest catalog-supported ``(attribute, value)`` matches."""
+
 
 class EmptyAttributeResolver:
     def candidate_attributes(self, text: str, *, preferred: str | None = None) -> tuple[str, ...]:
+        return ()
+
+    def matched_values(self, text: str) -> tuple[tuple[str, str], ...]:
         return ()
 
 
@@ -268,6 +274,46 @@ class CatalogAttributeRegistry:
             ),
         )
         return tuple(ordered)
+
+    def matched_values(self, text: str) -> tuple[tuple[str, str], ...]:
+        """Link explicit words to catalog-derived values without a hand-built lexicon.
+
+        This supports phrases such as ``red shoes`` where the same noun phrase
+        carries both a category and a modifier. Longest non-overlapping catalog
+        values win; stable attribute ordering resolves ambiguous metadata.
+        """
+
+        terms = tokenize(normalize_text(text), drop_stopwords=False)
+        matches: list[tuple[int, int, str, str]] = []
+        maximum = min(len(terms), self._max_value_terms)
+        for width in range(maximum, 0, -1):
+            for index in range(len(terms) - width + 1):
+                phrase = " ".join(terms[index : index + width])
+                attributes = self._phrase_attributes.get(phrase)
+                if not attributes:
+                    continue
+                ordered = sorted(
+                    attributes,
+                    key=lambda attribute: (
+                        attribute == "feature",
+                        -attributes[attribute],
+                        VALUE_RESOLUTION_ORDER.index(attribute),
+                    ),
+                )
+                matches.append((index, width, ordered[0], phrase))
+
+        selected: list[tuple[str, str]] = []
+        occupied: set[int] = set()
+        for index, width, attribute, phrase in sorted(
+            matches,
+            key=lambda item: (-item[1], item[0], VALUE_RESOLUTION_ORDER.index(item[2])),
+        ):
+            positions = set(range(index, index + width))
+            if positions & occupied:
+                continue
+            occupied.update(positions)
+            selected.append((attribute, phrase))
+        return tuple(selected)
 
     @lru_cache(maxsize=ATTRIBUTE_VALUE_CACHE_SIZE)
     def values_for_product(self, parent_asin: str, attribute: str) -> tuple[str, ...]:

@@ -81,10 +81,30 @@ class ShoppingAgent:
                 user_message,
                 last_ask_attribute=state.last_ask_attribute,
             )
-
+            semantic_called = False
+            if not isinstance(self.semantic_parser, DisabledSemanticParser):
+                preflight = self.semantic_escalation.decide_before_retrieval(
+                    frame,
+                    state.active,
+                )
+                if preflight.should_call:
+                    frame = self.interpreter.enrich_with_semantics(
+                        frame,
+                        context=state.active.context_snapshot(
+                            last_ask_attribute=state.last_ask_attribute,
+                        ),
+                        force=True,
+                    )
+                    semantic_called = True
+                    self.semantic_escalation.record_outcome(
+                        applied=bool(frame.query_rewrites or frame.semantic_hypotheses),
+                    )
             self.reducer.apply(state, frame) # update session state
             assessment, ranked = self._retrieve_and_rank(state) # get ranked candidates
-            if not isinstance(self.semantic_parser, DisabledSemanticParser):
+            if (
+                not semantic_called
+                and not isinstance(self.semantic_parser, DisabledSemanticParser)
+            ):
                 decision = self.semantic_escalation.decide( # decide if llm is needed
                     frame,
                     state.active,
@@ -94,7 +114,9 @@ class ShoppingAgent:
                 if decision.should_call:
                     frame = self.interpreter.enrich_with_semantics(
                         frame,
-                        context=state.active.context_snapshot(),
+                        context=state.active.context_snapshot(
+                            last_ask_attribute=state.last_ask_attribute,
+                        ),
                         force=True,
                     )
                     applied = self.reducer.apply_semantic(state, frame)

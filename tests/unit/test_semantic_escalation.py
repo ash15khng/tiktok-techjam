@@ -101,6 +101,20 @@ class SemanticEscalationPolicyTest(unittest.TestCase):
         self.assertTrue(decision.should_call)
         self.assertEqual(decision.reason, "difficult_language_low_stability")
 
+    def test_compound_correction_escalates_before_retrieval(self) -> None:
+        frame = self.interpreter.parse_deterministic(
+            "No budget, but actually make the shoes black and keep size 10.",
+            last_ask_attribute=None,
+        )
+
+        decision = self.policy.decide_before_retrieval(
+            frame,
+            ActiveState(category_phrases=["shoes"]),
+        )
+
+        self.assertTrue(decision.should_call)
+        self.assertEqual(decision.reason, "compound_state_change")
+
 
 if __name__ == "__main__":
     unittest.main()

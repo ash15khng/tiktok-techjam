@@ -80,6 +80,40 @@ class SemanticEscalationPolicy:
 
         return self._record(False, "deterministic_retrieval_sufficient")
 
+    def decide_before_retrieval(
+        self,
+        frame: IntentFrame,
+        active: ActiveState,
+    ) -> SemanticEscalationDecision:
+        """Use semantics before state mutation when a turn has compound intent.
+
+        Corrections, clearings, and additions can coexist in one natural message.
+        Simple schema answers stay local, preserving the low-latency common path;
+        retrieval-aware escalation remains available after candidate generation.
+        """
+
+        terms = tokenize(frame.raw_message, drop_stopwords=False)
+        if len(terms) < self.config.semantic_min_escalation_terms:
+            return self._record(False, "preflight_short_or_contextual")
+        operations = {update.operation for update in frame.slot_updates}
+        has_fallback = any(update.source == "fallback" for update in frame.slot_updates)
+        has_compound_change = len(frame.slot_updates) >= 2 and (
+            frame.override
+            or frame.no_preference_attribute is not None
+            or "exclude" in operations
+            or "set_any" in operations
+        )
+        if has_compound_change:
+            return self._record(True, "compound_state_change")
+        if not active.category_phrases and not frame.category_phrases:
+            return self._record(True, "preflight_missing_category")
+        if has_fallback and should_call_semantic_parser(
+            frame.raw_message,
+            has_fallback_span=True,
+        ):
+            return self._record(True, "preflight_difficult_language")
+        return self._record(False, "preflight_deterministic_sufficient")
+
     def record_outcome(self, *, applied: bool) -> None:
         """Record whether grounded semantic evidence changed active state."""
 

@@ -26,8 +26,13 @@ PAYLOAD_RE = re.compile(
     re.IGNORECASE,
 )
 NO_PREFERENCE_RE = re.compile(
-    r"(?:don['’]?t|do\s+not)\s+have\s+(?:an?\s+|any\s+)?"
-    r"(?:additional\s+)?preference\s+for\s+([a-z_]+)",
+    r"(?:"
+    r"(?:don.?t|do\s+not)\s+have\s+(?:an?\s+|any\s+)?(?:additional\s+)?"
+    r"preference\s+for|"
+    r"(?:don.?t|do\s+not)\s+care(?:\s+about)?|"
+    r"no\s+preference\s+for|no"
+    r")\s+(color|colour|material|size|style|brand|budget|feature|use[_\s-]?case)\b"
+    r"(?:\s+(?:either|too))?",
     re.IGNORECASE,
 )
 OVERRIDE_RE = re.compile(
@@ -63,11 +68,18 @@ WHITESPACE_RE = re.compile(r"\s+")
 LEADING_CONNECTOR_RE = re.compile(r"^(?:but|and)\s+", re.IGNORECASE)
 PREFERENCE_PREFIX_RE = re.compile(
     r"^(?:actually\s+)?(?:please\s+)?(?:i(?:'d|\s+would)?\s+prefer|i\s+prefer|"
-    r"preferably|ideally|make\s+it|with)\s+",
+    r"preferably|ideally|make\s+(?:it|the\s+\w+)|with)\s+",
     re.IGNORECASE,
 )
 TRAILING_INSTEAD_RE = re.compile(r"\s+instead$", re.IGNORECASE)
 CUSTOMER_CLAUSE_SEPARATOR_RE = re.compile(r"\s*[,;]\s*")
+CATEGORY_PRONOUN_RE = re.compile(r"^(?:it|them|this|that|those|these)\b", re.IGNORECASE)
+DISCOURSE_ONLY_RE = re.compile(
+    r"^(?:actually\s+)?(?:i\s+)?(?:want|need|prefer)(?:\s+it|\s+that)?$",
+    re.IGNORECASE,
+)
+USE_CASE_PREFIX_RE = re.compile(r"^(?:for|to\s+wear\s+for)\s+", re.IGNORECASE)
+ATTRIBUTE_ALIASES = {"colour": "color", "use case": "use_case", "use-case": "use_case"}
 
 # Standalone interpreter defaults mirror AgentConfig. Raising confidence rejects
 # more semantic slots; raising rewrite length accepts richer but riskier queries.
@@ -87,7 +99,25 @@ def _clean_customer_clause(value: str) -> str:
     cleaned = LEADING_CONNECTOR_RE.sub("", cleaned)
     cleaned = PREFERENCE_PREFIX_RE.sub("", cleaned)
     cleaned = TRAILING_INSTEAD_RE.sub("", cleaned)
+    if DISCOURSE_ONLY_RE.fullmatch(cleaned):
+        return ""
     return _clean_phrase(cleaned)
+
+
+def _attribute_name(value: str) -> Attribute:
+    """Normalize customer spelling to one competition attribute enum."""
+
+    normalized = normalize_text(value).replace("_", " ").replace("-", " ")
+    canonical = ATTRIBUTE_ALIASES.get(normalized, normalized.replace(" ", "_"))
+    return Attribute(canonical)
+
+
+def _remove_linked_modifier(category: str, modifier: str) -> str:
+    """Remove one catalog-linked modifier while retaining the product noun."""
+
+    pattern = re.compile(rf"\b{re.escape(modifier)}\b", re.IGNORECASE)
+    reduced = _clean_phrase(pattern.sub(" ", category))
+    return reduced or category
 
 
 def _split_customer_tail(value: str) -> tuple[str, ...]:
@@ -137,14 +167,20 @@ class MessageInterpreter:
         lowered = normalize_text(raw)
         override = bool(OVERRIDE_RE.search(lowered))
         negative_feedback = bool(NEGATIVE_FEEDBACK_RE.search(lowered))
-        no_preference: Attribute | None = None
-        no_preference_match = NO_PREFERENCE_RE.search(raw)
-
-        if no_preference_match: # explicit sentence, saying they dont care about a specific attribute
+        no_preference_matches = tuple(NO_PREFERENCE_RE.finditer(raw))
+        no_preferences: list[Attribute] = []
+        for match in no_preference_matches:
             try:
-                no_preference = Attribute(no_preference_match.group(1).casefold())
+                attribute = _attribute_name(match.group(1))
             except ValueError:
-                no_preference = Attribute.OTHER
+                attribute = Attribute.OTHER
+            if attribute not in no_preferences:
+                no_preferences.append(attribute)
+        no_preference = no_preferences[0] if no_preferences else None
+        no_preference_match = no_preference_matches[0] if no_preference_matches else None
+
+        if no_preference_match:
+            pass
         elif CONTEXTUAL_NO_PREFERENCE_RE.search(lowered): # bare decline, saying they dont care, assumed to be the last asked attribute
             try:
                 no_preference = (
@@ -154,19 +190,33 @@ class MessageInterpreter:
                 )
             except ValueError:
                 no_preference = Attribute.OTHER
+            no_preferences.append(no_preference)
         else: # cleans and check against bare decline again. returns None if no match
             no_preference = contextual_no_preference(raw, last_ask_attribute)
+            if no_preference:
+                no_preferences.append(no_preference)
+
+        # Remove explicit Boundary spans before parsing positive evidence. This
+        # keeps "no budget" from becoming a product exclusion and prevents a
+        # trailing "don't care about colour" from becoming a false category.
+        parseable_raw = NO_PREFERENCE_RE.sub(" ", raw)
 
         categories: list[str] = [] # finds category phrases in the message, e.g. "looking for running shoes" -> "running shoes"
-        category_match = CATEGORY_RE.search(raw)
+        category_match = CATEGORY_RE.search(parseable_raw)
         if category_match:
             category = _clean_phrase(category_match.group(1))
-            if category and not category.casefold().startswith("is:"):
+            if (
+                category
+                and not category.casefold().startswith("is:")
+                and not CATEGORY_PRONOUN_RE.match(category)
+            ):
                 categories.append(category)
+            else:
+                category_match = None
 
         preferences: list[str] = [] # finds preference phrases in the message, e.g. "I want red shoes" -> "red shoes"
         catalog_style_tail = False
-        payload_match = PAYLOAD_RE.search(raw)
+        payload_match = PAYLOAD_RE.search(parseable_raw)
         if payload_match:
             preferences.extend(
                 phrase
@@ -174,10 +224,10 @@ class MessageInterpreter:
                 if phrase
             )
         elif category_match:
-            raw_tail = raw[category_match.end():]
+            raw_tail = parseable_raw[category_match.end():]
             tail = _clean_phrase(raw_tail)
             tail = EXPLORING_TAIL_RE.sub("", tail)
-            if tail and not no_preference:
+            if tail:
                 # Evaluator/catalog-derived opening evidence follows a period
                 # and may contain meaningful commas inside one product feature.
                 # User-authored inline constraints are split conservatively.
@@ -186,8 +236,17 @@ class MessageInterpreter:
                     preferences.append(tail)
                 else:
                     preferences.extend(_split_customer_tail(tail))
-        elif not no_preference and not SPECIFIC_ATTRIBUTE_PROMPT_RE.search(lowered):
-            preferences.extend(_split_customer_tail(raw))
+        elif parseable_raw.strip(" ,;") and not SPECIFIC_ATTRIBUTE_PROMPT_RE.search(lowered):
+            preferences.extend(_split_customer_tail(parseable_raw))
+
+        # A leading "for ..." phrase is an occasion/use case. Removing only the
+        # discourse prefix makes the stored value useful to catalog search.
+        explicit_use_cases: list[str] = []
+        for index, phrase in enumerate(preferences):
+            if USE_CASE_PREFIX_RE.match(phrase):
+                preferences[index] = _clean_phrase(USE_CASE_PREFIX_RE.sub("", phrase))
+                if preferences[index]:
+                    explicit_use_cases.append(preferences[index])
 
         exclusions: list[str] = []
         retained_preferences: list[str] = []
@@ -227,14 +286,57 @@ class MessageInterpreter:
             )
             for value in exclusions
         ]
-        resolved_categories = list(categories)
+        matched_values = getattr(self.attribute_resolver, "matched_values", None)
+        category_links: list[tuple[str, str]] = []
+        resolved_categories: list[str] = []
+        for category in categories:
+            reduced_category = category
+            if callable(matched_values):
+                for attribute_name, value in matched_values(category):
+                    if attribute_name == "category":
+                        continue
+                    category_links.append((attribute_name, value))
+                    reduced_category = _remove_linked_modifier(reduced_category, value)
+            resolved_categories.append(reduced_category)
         preference_values: list[str] = []
         slot_updates: list[SlotUpdate] = [
             SlotUpdate(Attribute.CATEGORY, "replace" if override else "set", value, value)
-            for value in categories
+            for value in resolved_categories
         ]
+        for value in explicit_use_cases:
+            preference_values.append(value)
+            slot_updates.append(
+                SlotUpdate(
+                    Attribute.USE_CASE,
+                    "replace" if override else "add",
+                    value,
+                    value,
+                    "explicit",
+                )
+            )
+        # A catalog noun phrase can also carry explicit modifiers. Link those
+        # modifiers independently so a later correction can replace only color
+        # in "red shoes" without erasing size, budget, or use-case state.
+        for attribute_name, value in category_links:
+            try:
+                attribute = Attribute(attribute_name)
+            except ValueError:
+                continue
+            if value not in preference_values:
+                preference_values.append(value)
+            slot_updates.append(
+                SlotUpdate(
+                    attribute,
+                    "replace" if override else "add",
+                    value,
+                    value,
+                    "catalog_linked",
+                )
+            )
         for raw_value, resolved in resolved_preferences:
             if resolved.attribute is None or not resolved.value:
+                continue
+            if raw_value in explicit_use_cases:
                 continue
             if resolved.attribute is Attribute.CATEGORY:
                 if resolved.value not in resolved_categories:
@@ -264,9 +366,9 @@ class MessageInterpreter:
                     resolved.source,
                 )
             )
-        if no_preference:
+        for declined_attribute in no_preferences:
             source = "explicit" if no_preference_match else "contextual"
-            slot_updates.append(SlotUpdate(no_preference, "set_any", "", raw, source))
+            slot_updates.append(SlotUpdate(declined_attribute, "set_any", "", raw, source))
 
         dialogue_acts = ["inform"]
         if override:
@@ -311,9 +413,13 @@ class MessageInterpreter:
         return replace(
             frame,
             slot_updates=(*frame.slot_updates, *grounded_semantic.slot_updates),
+            category_phrases=tuple(
+                dict.fromkeys((*frame.category_phrases, *grounded_semantic.category_phrases))
+            ),
             preference_phrases=tuple(
                 dict.fromkeys((*frame.preference_phrases, *grounded_semantic.preference_phrases))
             ),
+            exclusions=tuple(dict.fromkeys((*frame.exclusions, *grounded_semantic.exclusions))),
             query_rewrites=grounded_semantic.query_rewrites,
             subjective_needs=grounded_semantic.subjective_needs,
             semantic_hypotheses=grounded_semantic.slot_hypotheses,

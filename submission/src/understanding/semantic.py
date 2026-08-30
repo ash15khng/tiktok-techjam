@@ -57,6 +57,8 @@ MAX_EVIDENCE_CHARS = 160
 MAX_PROVIDER_SLOT_CONFIDENCE = 0.70
 COMPLEX_MESSAGE_MIN_TERMS = 8
 REQUIRED_SLOT_KEYS = frozenset({"attribute", "value", "confidence", "evidence"})
+SEMANTIC_ATTRIBUTES = tuple(sorted(ALLOWED_ATTRIBUTES - {"other"}))
+SEMANTIC_OPERATIONS = ("add", "replace", "exclude", "set_any")
 
 # Direct GatedSemanticParser defaults support isolated tests. Production always
 # supplies AgentConfig values. Raising the caps increases cost/memory; lowering
@@ -76,7 +78,7 @@ SEMANTIC_SCHEMA = {
         "query_rewrites": {
             "type": "array",
             "items": {"type": "string", "maxLength": MAX_REWRITE_CHARS},
-            "minItems": 1,
+            "minItems": 0,
             "maxItems": MAX_QUERY_REWRITES,
         },
         "subjective_needs": {
@@ -89,12 +91,13 @@ SEMANTIC_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "attribute": {"type": "string", "enum": ["feature", "style", "use_case"]},
+                    "attribute": {"type": "string", "enum": list(SEMANTIC_ATTRIBUTES)},
+                    "operation": {"type": "string", "enum": list(SEMANTIC_OPERATIONS)},
                     "value": {"type": "string", "maxLength": MAX_SLOT_VALUE_CHARS},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "evidence": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
                 },
-                "required": ["attribute", "value", "confidence", "evidence"],
+                "required": ["attribute", "operation", "value", "confidence", "evidence"],
                 "additionalProperties": False,
             },
             "maxItems": MAX_SLOT_HYPOTHESES,
@@ -107,21 +110,37 @@ SEMANTIC_SCHEMA = {
 SEMANTIC_TOOL_NAME = "submit_catalog_search_interpretation"
 
 INSTRUCTIONS = """
-Translate difficult customer shopping language into catalog search terms.
-Call submit_catalog_search_interpretation exactly once. Produce 1 or 2 short
-query rewrites, at most 3 needs, and at most 4 hypotheses.
+You are the state interpreter for a conversational shopping search system.
+Call submit_catalog_search_interpretation exactly once. The input contains the
+previous active state and exactly one new customer message. Return at most two
+standalone catalog-search rewrites, three subjective needs, and four slot
+operations. Permitted fields are category, material, color, size, style, brand,
+budget, feature, and use_case.
 
-A rewrite may translate an implied benefit or metaphor into common product
-features and may include a strongly entailed generic product noun. Examples:
+Slot operation semantics:
+- add: retain existing values for this field and add the new value.
+- replace: remove only earlier values of this same field, then add the new value.
+- exclude: the customer rejects this value.
+- set_any: the customer has no constraint for this field; value must be empty.
+
+Preserve unrelated active constraints across turns. A correction to color must
+not remove size, budget, use case, or category. Resolve pronouns and short clauses
+using active state, but never invent evidence. Every operation needs confidence
+from 0 to 1 and the shortest exact quote from the current customer message.
+
+Each query rewrite must be a concrete, standalone product search query containing
+the active product category when known and only currently active positive
+constraints. It must not contain vague pronouns, cleared values, exclusions as
+positive terms, product IDs, or unsupported brands/materials/colors/sizes/budgets.
+A rewrite may translate an implied outcome into common catalog terminology and
+may include a strongly entailed generic product noun:
 - "cheap metal makes my ears itch" -> "hypoallergenic nickel free earrings"
 - "wet and windy commute, not a heavy coat" -> "lightweight water resistant windbreaker"
 - "fluffy at home, open toes, pillow padding" -> "fuzzy open toe memory foam house slippers"
 
-Do not invent a brand, material, color, size, budget, product ID, or unsupported
-preference. Preserve negation and corrections. Structured hypotheses may only
-use feature, style, or use_case, with confidence from 0 to 1 and the shortest
-exact customer evidence quote. Category, material, color, size, brand, and
-budget are never structured hypotheses. Local deterministic grounding is final.
+The local program validates every field, operation, evidence span, length, and
+catalog identifier boundary. When uncertain, omit the operation instead of
+guessing. Local deterministic state remains the final authority on conflicts.
 """
 
 
@@ -181,9 +200,14 @@ class ResponsesSemanticParser:
         self._transport = transport or _default_transport
 
     def interpret(self, message: str, context: str) -> SemanticInterpretation:
+        bounded_context = str(context)[: self.max_input_chars // 2]
+        try:
+            active_state: object = json.loads(bounded_context) if bounded_context else {}
+        except json.JSONDecodeError:
+            active_state = {"legacy_summary": bounded_context}
         input_value = json.dumps(
             {
-                "active_context": str(context)[: self.max_input_chars // 2],
+                "active_state": active_state,
                 "customer_message": str(message)[: self.max_input_chars // 2],
             },
             ensure_ascii=False,
@@ -283,14 +307,21 @@ class ResponsesSemanticParser:
             if not isinstance(item, dict) or not REQUIRED_SLOT_KEYS.issubset(item):
                 continue
             attribute = item["attribute"]
+            operation = item.get("operation", "add")
             value_text = item["value"]
             evidence = item["evidence"]
             confidence = item["confidence"]
             if attribute not in ALLOWED_ATTRIBUTES:
                 continue
+            if operation not in SEMANTIC_OPERATIONS:
+                continue
+            if not isinstance(value_text, str):
+                continue
+            if operation == "set_any" and value_text.strip():
+                continue
             if (
-                not isinstance(value_text, str)
-                or not value_text.strip()
+                operation != "set_any"
+                and not value_text.strip()
                 or len(value_text) > MAX_SLOT_VALUE_CHARS
             ):
                 continue
@@ -308,6 +339,7 @@ class ResponsesSemanticParser:
                     value_text.strip(),
                     min(MAX_PROVIDER_SLOT_CONFIDENCE, float(confidence)),
                     evidence.strip(),
+                    str(operation),
                 )
             )
         usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}

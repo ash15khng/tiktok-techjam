@@ -169,12 +169,32 @@ class AgentIntegrationTest(unittest.TestCase):
         )
 
         active = agent.sessions.get("semantic").active
-        self.assertIn("breathable cotton formal wedding shoes", active.preference_phrases)
+        self.assertIn("breathable cotton formal wedding shoes", active.search_rewrites)
         self.assertEqual(active.slot_values["feature"], ["breathable"])
         self.assertEqual(response["recommendations"][0]["parent_asin"], "A")
         self.assertEqual(response["usage"], {"prompt_tokens": 15, "completion_tokens": 6})
         self.assertEqual(agent.sessions.get("semantic").turn_count, 1)
         self.assertEqual(agent.diagnostics()["semantic_escalation"]["semantic_applied"], 1)
+
+    def test_compound_corrections_preserve_unrelated_constraints(self) -> None:
+        messages = (
+            "im looking for red shoes",
+            "size 10",
+            "no budget, actually make the shoes black",
+            "for casual wear, actually i want it dont care about colour too",
+        )
+        for turn, message in enumerate(messages, 1):
+            self.agent.respond("session", message, turn, 10)
+
+        active = self.agent._agent.sessions.get("session").active
+        self.assertEqual(active.category_phrases, ["shoes"])
+        self.assertEqual(active.slot_values["size"], ["size 10"])
+        self.assertEqual(active.slot_values["use_case"], ["casual wear"])
+        self.assertNotIn("color", active.slot_values)
+        self.assertNotIn("budget", active.slot_values)
+        self.assertEqual(active.suppressed_attributes, {"budget", "color"})
+        self.assertNotIn("red", active.query_terms())
+        self.assertNotIn("black", active.query_terms())
 
 
 if __name__ == "__main__":

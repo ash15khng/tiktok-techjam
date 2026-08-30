@@ -12,7 +12,11 @@ from submission.src.understanding.models import Attribute, SlotUpdate
 
 ASIN_RE = re.compile(r"\bB0[A-Z0-9]{8}\b", re.IGNORECASE)
 NEGATION_RE = re.compile(r"\b(?:not|no|without|avoid|exclude|anything\s+but)\b", re.IGNORECASE)
-SOFT_SEMANTIC_ATTRIBUTES = frozenset({Attribute.FEATURE, Attribute.STYLE, Attribute.USE_CASE})
+SET_ANY_RE = re.compile(
+    r"\b(?:no\s+(?:preference|budget)|don.?t\s+care|doesn.?t\s+matter|any\s+is\s+fine)\b",
+    re.IGNORECASE,
+)
+SEMANTIC_OPERATIONS = frozenset({"add", "replace", "exclude", "set_any"})
 WHITESPACE_RE = re.compile(r"\s+")
 # Raising this admits richer model hypotheses but increases semantic drift;
 # lowering it rejects long yet potentially useful needs. Eight terms retained
@@ -29,6 +33,8 @@ class GroundedSemantic:
     slot_hypotheses: tuple[SemanticSlotHypothesis, ...] = ()
     slot_updates: tuple[SlotUpdate, ...] = ()
     preference_phrases: tuple[str, ...] = ()
+    category_phrases: tuple[str, ...] = ()
+    exclusions: tuple[str, ...] = ()
 
 
 def ground_semantic_interpretation(
@@ -60,10 +66,16 @@ def ground_semantic_interpretation(
         )
     )
 
-    deterministic_attributes = {update.attribute for update in deterministic_updates}
+    deterministic_attributes = {
+        update.attribute
+        for update in deterministic_updates
+        if update.source not in {"fallback", "semantic"}
+    }
     retained: list[SemanticSlotHypothesis] = []
     updates: list[SlotUpdate] = []
     preferences: list[str] = []
+    categories: list[str] = []
+    exclusions: list[str] = []
     seen: set[tuple[Attribute, str]] = set()
     for hypothesis in semantic.slot_hypotheses:
         try:
@@ -72,26 +84,48 @@ def ground_semantic_interpretation(
             continue
         cleaned_value = _clean_phrase(hypothesis.value)
         key = (attribute, normalize_text(cleaned_value))
+        operation = hypothesis.operation
+        evidence_grounded = _evidence_is_grounded(hypothesis.evidence, raw_message)
+        set_any = operation == "set_any"
+        exclude = operation == "exclude"
         if (
-            attribute not in SOFT_SEMANTIC_ATTRIBUTES
+            attribute is Attribute.OTHER
             or attribute in deterministic_attributes
+            or operation not in SEMANTIC_OPERATIONS
             or hypothesis.confidence < min_confidence
-            or not cleaned_value
-            or len(tokenize(cleaned_value, drop_stopwords=False))
-            > MAX_SEMANTIC_HYPOTHESIS_TERMS
+            or (not set_any and not cleaned_value)
+            or (set_any and bool(cleaned_value))
+            or (
+                cleaned_value
+                and len(tokenize(cleaned_value, drop_stopwords=False))
+                > MAX_SEMANTIC_HYPOTHESIS_TERMS
+            )
             or ASIN_RE.search(cleaned_value)
-            or NEGATION_RE.search(cleaned_value)
-            or not _evidence_is_grounded(hypothesis.evidence, raw_message)
+            or (not exclude and not set_any and NEGATION_RE.search(cleaned_value))
+            or not evidence_grounded
+            or (set_any and not SET_ANY_RE.search(hypothesis.evidence))
+            or (exclude and not NEGATION_RE.search(hypothesis.evidence))
+            or (
+                not set_any
+                and attribute
+                not in {Attribute.FEATURE, Attribute.STYLE, Attribute.USE_CASE}
+                and not _value_is_grounded(cleaned_value, hypothesis.evidence)
+            )
             or key in seen
         ):
             continue
         seen.add(key)
         retained.append(hypothesis)
-        preferences.append(cleaned_value)
+        if exclude:
+            exclusions.append(cleaned_value)
+        elif attribute is Attribute.CATEGORY:
+            categories.append(cleaned_value)
+        elif not set_any:
+            preferences.append(cleaned_value)
         updates.append(
             SlotUpdate(
                 attribute,
-                "replace" if override else "add",
+                operation,
                 cleaned_value,
                 hypothesis.evidence,
                 "semantic",
@@ -103,6 +137,8 @@ def ground_semantic_interpretation(
         slot_hypotheses=tuple(retained),
         slot_updates=tuple(updates),
         preference_phrases=tuple(dict.fromkeys(preferences)),
+        category_phrases=tuple(dict.fromkeys(categories)),
+        exclusions=tuple(dict.fromkeys(exclusions)),
     )
 
 
@@ -145,6 +181,14 @@ def _evidence_is_grounded(evidence: str, raw_message: str) -> bool:
         message_terms[index : index + width] == evidence_terms
         for index in range(len(message_terms) - width + 1)
     )
+
+
+def _value_is_grounded(value: str, evidence: str) -> bool:
+    """Require hard attribute values to occur in the quoted customer span."""
+
+    value_terms = set(tokenize(value, drop_stopwords=False))
+    evidence_terms = set(tokenize(evidence, drop_stopwords=False))
+    return bool(value_terms) and value_terms.issubset(evidence_terms)
 
 
 def _clean_phrase(value: str) -> str:

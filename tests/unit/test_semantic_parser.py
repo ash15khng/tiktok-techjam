@@ -118,8 +118,18 @@ class SemanticParserTest(unittest.TestCase):
         rewrite_schema = observed["body"]["tools"][0]["parameters"]["properties"][
             "query_rewrites"
         ]
-        self.assertEqual(rewrite_schema["minItems"], 1)
+        self.assertEqual(rewrite_schema["minItems"], 0)
+        slot_schema = observed["body"]["tools"][0]["parameters"]["properties"][
+            "slot_hypotheses"
+        ]["items"]
+        self.assertIn("budget", slot_schema["properties"]["attribute"]["enum"])
+        self.assertEqual(
+            set(slot_schema["properties"]["operation"]["enum"]),
+            {"add", "replace", "exclude", "set_any"},
+        )
         self.assertIsInstance(observed["body"]["input"], str)
+        request_input = json.loads(observed["body"]["input"])
+        self.assertIn("active_state", request_input)
         self.assertNotIn("test-secret", json.dumps(observed["body"]))
 
     def test_malformed_response_raises_safe_provider_error(self) -> None:
