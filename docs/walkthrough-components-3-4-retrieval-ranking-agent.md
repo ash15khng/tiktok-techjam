@@ -120,3 +120,4 @@ Evaluation executed via `python3 -m evaluator.local_evaluator`:
 | **Intent Override Hit Rate** | `16.67%` | **`33.33%`** | **+100.0% (2x)** |
 | **Intent Override MRR** | `0.0933` | **`0.1833`** | **+96.5%** |
 | **Reported Token Usage** | 0 tokens | **0 tokens** | Zero LLM overhead / deterministic |
+
