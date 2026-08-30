@@ -17,7 +17,7 @@ from shopping_copilot.understanding.semantic_grounding import ground_semantic_in
 
 
 CATEGORY_RE = re.compile(
-    r"\b(?:looking\s+for|searching\s+for|want|need)\s+(.+?)"
+    r"\b(?:looking\s+for|searching\s+for|want|need|make\s+that)\s+(.+?)"
     r"(?=\s*(?:,|[.!?]|$|\b(?:under|below|over|above|between|with|without|preferably|ideally)\b))",
     re.IGNORECASE,
 )

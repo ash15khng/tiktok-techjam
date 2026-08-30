@@ -71,6 +71,16 @@ class MessageInterpreterTest(unittest.TestCase):
         self.assertTrue(frame.override)
         self.assertEqual(frame.preference_phrases, ("waterproof",))
 
+    def test_make_that_correction_separates_category_from_constraints(self) -> None:
+        frame = self.parse(
+            "Actually forget the boots. Make that fuzzy house slippers with crossed straps."
+        )
+
+        self.assertTrue(frame.override)
+        self.assertEqual(frame.category_phrases, ("fuzzy house slippers",))
+        self.assertEqual(frame.preference_phrases, ("crossed straps",))
+        self.assertEqual(frame.slot_updates[0].attribute, Attribute.CATEGORY)
+
     def test_short_brand_reply_uses_the_last_clarification(self) -> None:
         frame = self.parse("Nike", "brand")
 
