@@ -1,14 +1,32 @@
-# MVP Findings
+# Implementation Findings
 
 All scores below come from the unmodified public evaluator. Runtime code does not
 read public labels, evaluator helpers, hidden intent cards, or ground truth.
 
 ## Results
 
+The current generalized code was replayed on all 200 public sessions after the
+package/configuration refactor. It scored Hit Rate `0.990`, MRR `0.617232`, MTTC
+`2.550`, and TechnicalScore `0.849170`. A replay of the immediate parent commit
+produced the same aggregate metrics and zero session-level hit-turn/rank
+differences. The table below is the historical experiment trail; its peak is not
+the current submission result.
+
+Current generalized scenario results:
+
+| Scenario | Hit Rate@10 | MRR | MTTC |
+|---|---:|---:|---:|
+| Buying | 0.987500 | 0.594678 | 1.925000 |
+| Browsing | 1.000000 | 0.591478 | 2.512500 |
+| Intent Override | 0.966667 | 0.661799 | 4.266667 |
+| Boundary | 1.000000 | 0.870000 | 2.700000 |
+
+Historical experiment trail:
+
 | Run | Hit Rate@10 | MRR | MTTC | TechnicalScore |
 |---|---:|---:|---:|---:|
 | Published stateless BM25 | 0.125 | 0.068 | 9.81 | 0.107 |
-| First conversational MVP | 0.865 | 0.558 | 3.86 | 0.743 |
+| First conversational prototype | 0.865 | 0.558 | 3.86 | 0.743 |
 | Selective override + capped popularity | 0.920 | 0.628 | 3.26 | 0.803 |
 | Unseen-first, without override reset | 0.835 | 0.538 | 3.76 | 0.724 |
 | Unseen-first, reset on override | 0.960 | 0.648 | 2.895 | 0.837 |
@@ -19,7 +37,7 @@ read public labels, evaluator helpers, hidden intent cards, or ground truth.
 | Compound user parsing + price signal | 0.995 | 0.635 | 2.245 | 0.863 |
 | Contextual reply resolver | 0.995 | 0.636 | 2.245 | 0.8633 |
 
-Final scenario results:
+Historical peak scenario results:
 
 | Scenario | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|
@@ -82,7 +100,8 @@ whether to call the provider. It selected zero calls on the previous seeded
 50-session sample and 4 of 15 turns on the hard suite. Exact leading-product
 evidence suppresses unnecessary calls. Semantic evidence is applied without
 advancing the turn, and retrieval repeats only when accepted evidence changes
-state. The full 200-session LLM-off score remains exactly `0.863324`.
+state. At that pre-generalization checkpoint, the full 200-session LLM-off
+score remained exactly `0.863324`.
 
 Two capped live hard-suite passes made eight attempts total. Five completed,
 three failed, and completed outputs produced no locally usable hints. The first
@@ -209,7 +228,7 @@ Consequences:
 - no product is rejected merely because an attribute or price is absent;
 - catalog-native values can be resolved without editing source lists;
 - package dimensions are excluded from wearable-size evidence;
-- exact normalized phrases are preferred, while fuzzy linking remains deferred;
+- exact normalized phrases are preferred; fuzzy linking is not implemented;
 - the optional LLM is still needed for true open-world paraphrase, metaphor,
   misspelling, and implicit-need translation.
 

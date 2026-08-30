@@ -59,7 +59,7 @@ $env:SHOPPING_COPILOT_LLM_MODEL = "llama3.1:8b"
 $env:SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS = "6"
 $env:SOCLAAS_BASE_URL = "https://your-real-gateway.example/v1"
 $env:SOCLAAS_API_KEY = "paste-the-key-in-your-own-terminal"
-python -m shopping_copilot.llm_smoke_test
+python -m submission.src.llm_smoke_test
 ```
 
 Clear the session value afterwards:
@@ -73,7 +73,7 @@ restrict its permissions, then set its path before running Python:
 
 ```powershell
 $env:SHOPPING_COPILOT_ENV_FILE = "C:\private\techjam-soclaas.env"
-python -m shopping_copilot.llm_smoke_test
+python -m submission.src.llm_smoke_test
 ```
 
 This reduces accidental Git and workspace exposure, but any process running
@@ -131,7 +131,7 @@ become an empty semantic result during normal agent operation. Run the one-call
 smoke test first so configuration or response-format failures are visible:
 
 ```powershell
-python -m shopping_copilot.llm_smoke_test
+python -m submission.src.llm_smoke_test
 ```
 
 Only after that succeeds should the team run a capped evaluation and record

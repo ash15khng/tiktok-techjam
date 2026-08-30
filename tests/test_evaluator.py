@@ -5,7 +5,12 @@ from pathlib import Path
 import json
 import tempfile
 
-from evaluator.local_evaluator import catalog_index, evaluate, metric_summary, normalize_recommendations
+from evaluator.local_evaluator import (
+    catalog_index,
+    evaluate,
+    metric_summary,
+    normalize_recommendations,
+)
 
 
 class EchoTargetAgent:
@@ -69,7 +74,10 @@ class EvaluatorTest(unittest.TestCase):
                     "price": 89.0,
                 },
             ]
-            catalog_path.write_text("".join(json.dumps(row) + "\n" for row in catalog_rows), encoding="utf-8")
+            catalog_path.write_text(
+                "".join(json.dumps(row) + "\n" for row in catalog_rows),
+                encoding="utf-8",
+            )
             catalog_ids, categories, products = catalog_index(catalog_path)
             samples = [{
                 "sample_id": "public_v2_0001",

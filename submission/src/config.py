@@ -111,7 +111,9 @@ class AgentConfig:
     semantic_cache_size: int = 256
     # Raising minimum confidence rejects more model slots; lowering it accepts
     # more weak inferences. Raising rewrite terms allows richer expansions but
-    # increases drift risk. Current grounding passed the frozen hard suite.
+    # increases drift risk. Requiring more exact-phrase terms suppresses more
+    # model calls; requiring fewer may mistake generic matches for strong
+    # evidence. Current grounding passed the frozen hard suite.
     semantic_min_confidence: float = 0.55
     semantic_max_rewrite_terms: int = 12
     semantic_exact_phrase_min_terms: int = 3

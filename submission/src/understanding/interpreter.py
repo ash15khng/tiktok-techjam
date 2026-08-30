@@ -26,7 +26,8 @@ PAYLOAD_RE = re.compile(
     re.IGNORECASE,
 )
 NO_PREFERENCE_RE = re.compile(
-    r"(?:don['’]?t|do\s+not)\s+have\s+(?:an?\s+|any\s+)?(?:additional\s+)?preference\s+for\s+([a-z_]+)",
+    r"(?:don['’]?t|do\s+not)\s+have\s+(?:an?\s+|any\s+)?"
+    r"(?:additional\s+)?preference\s+for\s+([a-z_]+)",
     re.IGNORECASE,
 )
 OVERRIDE_RE = re.compile(
@@ -68,6 +69,12 @@ PREFERENCE_PREFIX_RE = re.compile(
 TRAILING_INSTEAD_RE = re.compile(r"\s+instead$", re.IGNORECASE)
 CUSTOMER_CLAUSE_SEPARATOR_RE = re.compile(r"\s*[,;]\s*")
 
+# Standalone interpreter defaults mirror AgentConfig. Raising confidence rejects
+# more semantic slots; raising rewrite length accepts richer but riskier queries.
+# The configured values passed the grounding suite; no isolated sweep is claimed.
+DEFAULT_SEMANTIC_MIN_CONFIDENCE = 0.55
+DEFAULT_SEMANTIC_MAX_REWRITE_TERMS = 12
+
 
 def _clean_phrase(value: str) -> str:
     return WHITESPACE_RE.sub(" ", value).strip(" -;,.:\t\r\n")
@@ -108,8 +115,8 @@ class MessageInterpreter:
         self,
         semantic_parser: SemanticParser | None = None,
         *,
-        semantic_min_confidence: float = 0.55,
-        semantic_max_rewrite_terms: int = 12,
+        semantic_min_confidence: float = DEFAULT_SEMANTIC_MIN_CONFIDENCE,
+        semantic_max_rewrite_terms: int = DEFAULT_SEMANTIC_MAX_REWRITE_TERMS,
         attribute_resolver: AttributeValueResolver | None = None,
     ) -> None:
         self.semantic_parser = semantic_parser or DisabledSemanticParser()
@@ -139,7 +146,11 @@ class MessageInterpreter:
                 no_preference = Attribute.OTHER
         elif CONTEXTUAL_NO_PREFERENCE_RE.search(lowered):
             try:
-                no_preference = Attribute(last_ask_attribute) if last_ask_attribute else Attribute.OTHER
+                no_preference = (
+                    Attribute(last_ask_attribute)
+                    if last_ask_attribute
+                    else Attribute.OTHER
+                )
             except ValueError:
                 no_preference = Attribute.OTHER
         else:
@@ -244,7 +255,13 @@ class MessageInterpreter:
                 continue
             exclusion_values.append(resolved.value)
             slot_updates.append(
-                SlotUpdate(resolved.attribute, "exclude", resolved.value, raw_value, resolved.source)
+                SlotUpdate(
+                    resolved.attribute,
+                    "exclude",
+                    resolved.value,
+                    raw_value,
+                    resolved.source,
+                )
             )
         if no_preference:
             source = "explicit" if no_preference_match else "contextual"

@@ -1,21 +1,22 @@
 # Shopping Copilot System Flowcharts
 
 This document is the visual, implementation-level guide to the Shopping Copilot.
-It describes the system that exists on the current branch. Optional or deferred
-paths are labelled so they are not mistaken for the reliable default path.
+It describes the system that exists on the current branch. The implemented
+optional semantic path is labelled so it is not mistaken for the offline default.
 
 ## Component map
 
 | Component | Responsibility | Primary implementation |
 |---|---|---|
-| Official adapter | Expose the required `Agent` contract | [`starter/agent.py`](../starter/agent.py) |
-| Orchestrator | Coordinate one complete response | [`shopping_copilot/agent.py`](../shopping_copilot/agent.py) |
-| Catalog | Validate records and build read-only indexes | [`shopping_copilot/catalog/`](../shopping_copilot/catalog/) |
-| Understanding | Convert a message into immutable proposed updates | [`shopping_copilot/understanding/`](../shopping_copilot/understanding/) |
-| Dialog state | Apply corrections and own mutable session state | [`shopping_copilot/dialog/`](../shopping_copilot/dialog/) |
-| Retrieval | Plan, generate, fuse, and assess candidates | [`shopping_copilot/retrieval/`](../shopping_copilot/retrieval/) |
-| Ranking | Rerank, apply novelty, budget, and explanations | [`shopping_copilot/ranking/`](../shopping_copilot/ranking/) |
-| Response guard | Enforce allowed attributes and catalog IDs | [`shopping_copilot/contracts.py`](../shopping_copilot/contracts.py) |
+| Official adapter | Expose the required `Agent` contract | [`submission/agent.py`](../submission/agent.py) |
+| Evaluator shim | Preserve the supplied evaluator import | [`starter/agent.py`](../starter/agent.py) |
+| Orchestrator | Coordinate one complete response | [`submission/src/agent.py`](../submission/src/agent.py) |
+| Catalog | Validate records and build read-only indexes | [`submission/src/catalog/`](../submission/src/catalog/) |
+| Understanding | Convert a message into immutable proposed updates | [`submission/src/understanding/`](../submission/src/understanding/) |
+| Dialog state | Apply corrections and own mutable session state | [`submission/src/dialog/`](../submission/src/dialog/) |
+| Retrieval | Plan, generate, fuse, and assess candidates | [`submission/src/retrieval/`](../submission/src/retrieval/) |
+| Ranking | Rerank, apply novelty, budget, and explanations | [`submission/src/ranking/`](../submission/src/ranking/) |
+| Response guard | Enforce allowed attributes and catalog IDs | [`submission/src/contracts.py`](../submission/src/contracts.py) |
 | Evaluation | Simulate sessions and calculate official metrics | [`evaluator/local_evaluator.py`](../evaluator/local_evaluator.py) |
 
 ## 1. Entire system
@@ -648,6 +649,7 @@ the sophistication of the answer, not invalidate the response.
 5. Use clarification, guard, and evaluator diagrams to verify changes against the
    ten-turn and exact-ASIN objective.
 
-For formulas, tuning rationale, deferred alternatives, and ownership, continue
-with [`architecture.md`](architecture.md). For measured experiments and rejected
-approaches, see [`findings.md`](findings.md).
+For formulas, tuning rationale, and ownership, continue with
+[`architecture.md`](architecture.md). For measured experiments and rejected
+approaches, see [`findings.md`](findings.md); remaining work lives in
+[`../TODO.md`](../TODO.md).

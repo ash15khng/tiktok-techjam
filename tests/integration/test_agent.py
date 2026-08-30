@@ -6,7 +6,11 @@ import unittest
 from pathlib import Path
 
 from submission.src.agent import ShoppingAgent
-from submission.src.contracts import ALLOWED_ATTRIBUTES, SemanticInterpretation, SemanticSlotHypothesis
+from submission.src.contracts import (
+    ALLOWED_ATTRIBUTES,
+    SemanticInterpretation,
+    SemanticSlotHypothesis,
+)
 from starter.agent import Agent
 
 
@@ -76,7 +80,10 @@ class AgentIntegrationTest(unittest.TestCase):
         self.assertEqual(ranked[0], "A")
         self.assertLessEqual(len(ranked), 10)
         self.assertEqual(len(ranked), len(set(ranked)))
-        self.assertTrue(response["ask_attribute"] is None or response["ask_attribute"] in ALLOWED_ATTRIBUTES)
+        self.assertTrue(
+            response["ask_attribute"] is None
+            or response["ask_attribute"] in ALLOWED_ATTRIBUTES
+        )
 
     def test_override_replaces_stale_opening_preference(self) -> None:
         self.agent.respond("session", "I'm looking for shoes. cotton", 1, 10)

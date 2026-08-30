@@ -79,8 +79,9 @@ working sessions:
 | TechnicalScore | 0.851762 |
 
 The 40-session holdout has not been evaluated during this re-engineering pass.
-The older full-public score of `0.863324` remains a historical compatibility
-reference, not the tuning target for these changes.
+The current generalized full-public compatibility replay is `0.849170`. The
+older `0.863324` result remains a historical pre-generalization peak, not the
+tuning target for these changes.
 
 ## Acceptance gates
 

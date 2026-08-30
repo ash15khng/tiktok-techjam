@@ -85,7 +85,13 @@ _CUE_PATTERNS = (
     ("material", re.compile(r"\b(?:material|fabric|composition|made\s+(?:of|from))\b", re.I)),
     ("color", re.compile(r"\b(?:color|colour|shade)\b", re.I)),
     ("size", re.compile(r"\b(?:size|sizing|width|wide|narrow)\b", re.I)),
-    ("style", re.compile(r"\b(?:style|fit|pattern|heel|toe|neck|sleeve|closure|silhouette)\b", re.I)),
+    (
+        "style",
+        re.compile(
+            r"\b(?:style|fit|pattern|heel|toe|neck|sleeve|closure|silhouette)\b",
+            re.I,
+        ),
+    ),
     ("brand", re.compile(r"\b(?:brand|manufacturer|made\s+by)\b", re.I)),
     ("use_case", re.compile(r"\b(?:occasion|use\s*case|activity|sport|lifestyle)\b", re.I)),
     ("feature", re.compile(r"\b(?:feature|function|benefit)\b", re.I)),
@@ -157,7 +163,9 @@ class CatalogAttributeRegistry:
         self.products = products
         self._direct: dict[str, dict[str, tuple[str, ...]]] = {}
         value_counts: dict[str, Counter[str]] = {name: Counter() for name in ATTRIBUTE_ORDER}
-        value_document_counts: dict[str, Counter[str]] = {name: Counter() for name in ATTRIBUTE_ORDER}
+        value_document_counts: dict[str, Counter[str]] = {
+            name: Counter() for name in ATTRIBUTE_ORDER
+        }
         coverage_counts: Counter[str] = Counter()
         prices: list[float] = []
 
@@ -210,7 +218,13 @@ class CatalogAttributeRegistry:
                             self._phrase_attributes[term][attribute] += counts[term]
         self._max_value_terms = min(
             MAX_ATTRIBUTE_VALUE_TERMS,
-            max((len(tokenize(value, drop_stopwords=False)) for value in self._phrase_attributes), default=1),
+            max(
+                (
+                    len(tokenize(value, drop_stopwords=False))
+                    for value in self._phrase_attributes
+                ),
+                default=1,
+            ),
         )
         self._inference_prefixes: set[tuple[str, ...]] = set()
         for phrase, attributes in self._phrase_attributes.items():
@@ -272,7 +286,10 @@ class CatalogAttributeRegistry:
         return tuple(dict.fromkeys((*direct, *inferred)))
 
     @lru_cache(maxsize=INFERRED_VALUE_CACHE_SIZE)
-    def _inferred_values_for_product(self, parent_asin: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    def _inferred_values_for_product(
+        self,
+        parent_asin: str,
+    ) -> tuple[tuple[str, tuple[str, ...]], ...]:
         text_terms = tokenize(self.products[parent_asin].search_text, drop_stopwords=False)
         matches: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
         for start in range(len(text_terms)):
@@ -358,7 +375,11 @@ def _split_value(raw_value: str) -> tuple[str, ...]:
     normalized = normalize_text(raw_value)
     if normalized in _VALUE_NOISE:
         return ()
-    parts = tuple(part for part in _VALUE_SPLIT_RE.split(normalized) if part and part not in _VALUE_NOISE)
+    parts = tuple(
+        part
+        for part in _VALUE_SPLIT_RE.split(normalized)
+        if part and part not in _VALUE_NOISE
+    )
     return parts or ((normalized,) if normalized else ())
 
 

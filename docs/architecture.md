@@ -1,1235 +1,371 @@
 # Shopping Copilot Technical Architecture
 
-For a visual implementation guide, see
-[`system-flowcharts.md`](system-flowcharts.md). It includes the end-to-end flow,
-per-turn sequence, and component-level diagrams for catalog ingestion,
-understanding, state, retrieval, ranking, semantics, clarification, guarding, and
-evaluation.
+This document describes the code that exists in the final submission package.
+It does not describe aspirational components. Remaining work and alternative
+implementations are centralized in [`../TODO.md`](../TODO.md).
 
-This document is the implementation specification for the TechJam 2026 Conversational E-Commerce Search agent. It defines the runtime stack, algorithms, internal contracts, module boundaries, failure handling, tests, and delivery sequence. The public entry point remains `starter.agent.Agent`.
+## 1. Objective and constraints
 
-The authoritative requirements are [competition_specification.md](competition_specification.md), [agent_api_contract.json](agent_api_contract.json), and [evaluation_config.json](evaluation_config.json). The Agent must never read public labels, hidden intent cards, evaluator internals, or ground truth at runtime.
+The agent must place one hidden frozen-catalog `parent_asin` in the first ten
+valid unique recommendations, at the highest possible rank and earliest possible
+turn. It may ask one structured clarification and recommend on the same turn.
+The session ends on a hit or after turn 10.
 
-For a one-page overview, see [pipeline-summary.md](pipeline-summary.md).
+Design consequences:
 
-## 1. Objective and design consequences
+- every usable turn returns recommendations;
+- current session evidence outranks the anonymized Customer Profile;
+- corrections remove stale evidence before retrieval;
+- missing catalog metadata is unknown, not a contradiction;
+- optional model failure cannot break the offline path; and
+- only `ResponseGuard` creates the organizer-facing response.
 
-The target is one exact catalog `parent_asin`. A session succeeds when that identifier appears among the first ten valid unique recommendations. The optimization objective is:
-
-```text
-TechnicalScore = 0.50 * HitRate@10 + 0.30 * MRR + 0.20 * Efficiency
-Efficiency     = clip((11 - MTTC) / 10, 0, 1)
-```
-
-This produces the following implementation priorities:
-
-1. maximize target recall in the candidate union;
-2. return ten recommendations on every usable turn, including clarification turns;
-3. rank likely targets as high as possible;
-4. after a miss, ask the most answerable and discriminative non-repeated question;
-5. apply corrections before retrieval so stale preferences cannot dominate;
-6. keep optional models outside the reliable deterministic path.
-
-`Buying`, `Browsing`, `Intent Override`, and `Boundary` are evaluator scenarios. They are not runtime route labels. The Agent estimates current need specificity and retrieval uncertainty from participant-visible evidence only.
-
-## 2. Chosen technology stack
-
-### 2.1 Reliable runtime
-
-| Technology | Version or choice | Purpose |
-|---|---|---|
-| Python | 3.10+ | Agent implementation and evaluator compatibility |
-| Standard library | `dataclasses`, `enum`, `typing`, `re`, `unicodedata`, `json`, `sqlite3`, `math`, `statistics`, `threading` | Typed contracts, parsing, storage, scoring, and session isolation |
-| SQLite FTS5 | Bundled with Python SQLite | In-memory BM25 title and multi-field retrieval |
-| JSONL | UTF-8 | Frozen catalog input and local trace output |
-| `unittest` | Standard library | Unit and integration tests without a required test dependency |
-| SHA-256 | `hashlib` | Catalog artifact verification |
-
-The reliable path has no network, LLM, vector database, or GPU dependency. It must run from a clean checkout after the catalog is placed in `data/catalog.jsonl`.
-
-### 2.2 Gated optional stages
-
-These dependencies are introduced only after an ablation demonstrates a specific recall or ranking failure:
-
-| Technology | Concrete choice | Use | Runtime fallback |
-|---|---|---|---|
-| NumPy | Current compatible release | Exact vector similarity over 50,000 products | Skip dense generator |
-| Sentence Transformers | `sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions | Product and subjective-query embeddings | Field-weighted FTS |
-| Cross encoder | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Rerank at most 30 candidates | Lightweight reranker |
-| SoCLaaS Responses-compatible API or local LLM | Provider behind `SemanticParser` protocol | JSON-validated interpretation of unresolved clauses | Deterministic interpreter |
-
-Dense vectors are stored as normalized `float32` arrays. A `50_000 x 384` matrix is approximately 73 MiB, so exact NumPy dot-product retrieval is simpler than an infrastructure-heavy vector database. Model artifacts are built locally and are not committed unless the team explicitly chooses to distribute them.
-
-## 3. Runtime architecture
+## 2. Submission layout
 
 ```text
-reset(session_id, user_profile)
-    -> create isolated SessionState
-
-respond(session_id, message, turn, top_k)
-    -> CatalogAttributeRegistry supplies catalog-native values and questions
-    -> MessageInterpreter.parse_deterministic(message, last question)
-    -> ContextualReplyResolver: explicit evidence > immediate question > fallback
-    -> StateReducer.apply(IntentFrame)
-    -> RetrievalPlanner blends focused/exploratory route weights
-    -> field + title + category + category-popularity + constraint FTS
-    -> weighted Reciprocal Rank Fusion
-    -> generator overlap/stability assessment
-    -> full-union LightweightReranker
-    -> SemanticEscalationPolicy checks parse/retrieval confidence
-       -> optional budgeted function-tool parse
-       -> local evidence grounding
-       -> apply semantic delta without incrementing the turn
-       -> reretrieve once only when grounded evidence changed state
-    -> stable unseen-first Recommendation Exposure
-    -> QuestionPolicy candidate partitions / broad recovery
-    -> ResponseGuard.build()
-    -> Agent API response
+submission/
+|-- agent.py                         Canonical organizer-facing Agent
+|-- requirements.txt                Python 3.10+, standard-library runtime
+|-- README.md                        Reproduction instructions
+`-- src/
+    |-- agent.py                     End-to-end ShoppingAgent coordinator
+    |-- config.py                    Frozen AgentConfig and tuning rationale
+    |-- contracts.py                 Provider protocols and ResponseGuard
+    |-- environment.py               Allow-listed .env loader
+    |-- catalog/
+    |   |-- attributes.py            Catalog-derived attribute registry
+    |   |-- models.py                Normalized product records
+    |   |-- normalization.py         Unicode/text normalization
+    |   `-- store.py                 Product map and in-memory SQLite FTS5
+    |-- understanding/
+    |   |-- models.py                IntentFrame and SlotUpdate
+    |   |-- contextual.py            Short-answer resolution
+    |   |-- interpreter.py           Deterministic message parser
+    |   |-- escalation.py            Retrieval-aware model-call policy
+    |   |-- semantic.py              Responses-compatible API adapter
+    |   `-- semantic_grounding.py    Local model-output validation
+    |-- dialog/
+    |   |-- models.py                ActiveState and SessionState
+    |   |-- reducer.py               State transitions and overrides
+    |   |-- store.py                 Thread-safe session lifecycle
+    |   `-- policy.py                Clarification value policy
+    |-- retrieval/
+    |   |-- models.py                Plan, evidence, and assessment types
+    |   |-- planner.py               Focused/exploratory route blend
+    |   |-- lexical.py               Five candidate generators
+    |   `-- fusion.py                Weighted RRF and overlap assessment
+    `-- ranking/
+        |-- budget.py                Three-valued price evidence
+        |-- reranker.py              Inspectable final score
+        |-- exposure.py              Across-turn novelty
+        `-- explanations.py          Evidence-grounded response text
 ```
 
-The key separation is:
+`starter/agent.py` is intentionally a one-line compatibility import because the
+supplied evaluator imports `starter.agent.Agent`. Product logic belongs only in
+`submission/`.
 
-- `IntentFrame`: what the current message means;
-- `ActiveState`: which evidence remains active after corrections;
-- `RetrievalPlan`: how active evidence blends the five candidate rank lists;
-- `RetrievalAssessment`: generator agreement and Top-10 stability used by the
-  question policy;
-- `QuestionDecision`: which single optional clarification accompanies the list.
+## 3. End-to-end decision loop
 
-Need assessment, denser retrieval-quality features, tri-state structured
-constraints, learned belief, dense retrieval, and cross-encoder ranking remain
-documented extensions. They are not implied to exist in the current MVP.
-
-## 4. Package and ownership boundaries
-
-```text
-starter/
-`-- agent.py                         Official interface adapter only
-
-shopping_copilot/
-|-- __init__.py
-|-- agent.py                         End-to-end orchestrator
-|-- config.py                        Frozen dataclass configuration
-|-- contracts.py                     Protocols and ResponseGuard
-|
-|-- catalog/
-|   |-- attributes.py                Contract schema + catalog-derived values
-|   |-- models.py                    ProductRecord and search-result types
-|   |-- normalization.py             Text and value normalization
-|   `-- store.py                     Product map, FTS5, vocabulary, popularity
-|
-|-- understanding/
-|   |-- models.py                    IntentFrame and SlotUpdate
-|   |-- contextual.py                Short/elliptical reply resolution
-|   |-- interpreter.py               Deterministic parsing coordinator
-|   |-- escalation.py                Retrieval-aware semantic call policy
-|   |-- semantic.py                  Optional provider, cost gate, cache
-|   `-- semantic_grounding.py        Retrieval-safe hint validation
-|
-|-- dialog/
-|   |-- models.py                    SessionState and ActiveState
-|   |-- store.py                     Thread-safe session lifecycle
-|   |-- reducer.py                   Deterministic state transitions
-|   `-- policy.py                    QuestionPolicy
-|
-|-- retrieval/
-|   |-- models.py                    Plan, CandidateEvidence, assessment
-|   |-- lexical.py                   Five lexical candidate rank lists
-|   |-- fusion.py                    Weighted RRF and overlap assessment
-|   `-- planner.py                   Focused/exploratory blend
-|
-|-- ranking/
-|   |-- reranker.py                  Deterministic scoring
-|   |-- exposure.py                  Across-turn novelty and override reset
-|   `-- explanations.py              Compact customer-facing summary
-
-tests/
-|-- unit/
-|-- integration/
-`-- test_evaluator.py                Protected harness tests
+```mermaid
+flowchart TD
+    A[reset: session ID + anonymized profile] --> B[Fresh SessionState]
+    C[respond: message + turn + top_k] --> D[Deterministic MessageInterpreter]
+    B --> D
+    D --> E[Immutable IntentFrame]
+    E --> F[StateReducer]
+    F --> G[Current ActiveState]
+    G --> H[RetrievalPlanner]
+    H --> I[Five lexical candidate lists]
+    I --> J[Weighted Reciprocal Rank Fusion]
+    J --> K[RetrievalAssessment]
+    J --> L[LightweightReranker]
+    K --> M{Semantic call justified?}
+    M -- yes and enabled --> N[Strict function-tool parse + local grounding]
+    N -->|accepted state delta| F
+    M -- no --> O[Unseen-first ordering]
+    L --> O
+    O --> P[QuestionPolicy]
+    P --> Q[Explanation + ResponseGuard]
+    Q --> R[message + ask_attribute + Top 10 + usage]
 ```
 
-Files described later but absent from this tree are deferred extension points,
-not current dependencies.
+The optional semantic pass happens only after the first deterministic retrieval.
+It can add grounded search evidence, then trigger one reretrieval. It cannot
+return IDs, delete deterministic evidence, or make the response depend on the
+network.
 
-`starter/agent.py` constructs and delegates to `shopping_copilot.agent.ShoppingAgent`. It must not accumulate business logic.
+## 4. Catalog ingestion and missing fields
 
-## 5. Internal contracts
+`CatalogStore` reads the frozen JSONL file once. Each line must contain a unique,
+non-empty `parent_asin`; invalid identity fails fast. Other fields are normalized
+as follows:
 
-All internal objects are typed dataclasses. Mappings exposed by immutable objects use `Mapping` or are copied before storage.
-
-### 5.1 Current catalog contracts
-
-```python
-@dataclass(frozen=True)
-class ProductRecord:
-    parent_asin: str
-    title: str
-    categories: tuple[str, ...]
-    features: tuple[str, ...]
-    details: tuple[str, ...]
-    store: str
-    description: tuple[str, ...]
-    price: float | None
-    average_rating: float | None
-    rating_number: int
-    detail_pairs: tuple[tuple[str, str], ...]
-```
-
-Missing product data remains absent. It is never converted into the strings `unknown`, `none`, or `null` and never treated as a contradiction.
-
-Raw structured detail pairs are retained for typed attribute extraction while
-the flattened `details` tuple remains available to FTS. Ranged catalog prices,
-extraction confidence, and explicit field-presence tracking remain extensions.
-
-### 5.2 Current understanding contracts
-
-```python
-class Attribute(str, Enum):
-    CATEGORY = "category"
-    MATERIAL = "material"
-    COLOR = "color"
-    SIZE = "size"
-    STYLE = "style"
-    BRAND = "brand"
-    BUDGET = "budget"
-    FEATURE = "feature"
-    USE_CASE = "use_case"
-    OTHER = "other"
-
-
-@dataclass(frozen=True)
-class SlotUpdate:
-    attribute: Attribute
-    operation: Literal["set", "add", "exclude", "clear", "set_any", "replace"]
-    value: str
-    raw_span: str
-    source: Literal["explicit", "contextual", "fallback"] = "explicit"
-
-
-@dataclass(frozen=True)
-class IntentFrame:
-    raw_message: str
-    dialogue_acts: tuple[str, ...]
-    slot_updates: tuple[SlotUpdate, ...]
-    category_phrases: tuple[str, ...]
-    preference_phrases: tuple[str, ...]
-    exclusions: tuple[str, ...]
-    override: bool
-    negative_feedback: bool
-    no_preference_attribute: Attribute | None
-    query_rewrites: tuple[str, ...]
-    subjective_needs: tuple[str, ...]
-    semantic_hypotheses: tuple[SemanticSlotHypothesis, ...]
-    prompt_tokens: int
-    completion_tokens: int
-```
-
-The richer relation, confidence, character-span, alternative-group, and
-source-turn fields described by later algorithms are deferred. In particular,
-first-class OR groups such as `black or navy` are not yet represented.
-
-### 5.3 Current state and assessment contracts
-
-```python
-@dataclass
-class ActiveState:
-    category_phrases: list[str]
-    preference_phrases: list[str]
-    exclusions: list[str]
-    slot_values: dict[str, list[str]]
-    suppressed_attributes: set[str]
-    asked_attributes: list[str]
-
-
-@dataclass
-class SessionState:
-    session_id: str
-    customer_profile: dict
-    active: ActiveState
-    clarification_outcomes: dict[str, str]
-    last_ask_attribute: str | None
-    last_recommendations: tuple[str, ...]
-    recommendation_exposure: set[str]
-    turn_count: int
-    last_feedback_negative: bool
-
-
-@dataclass(frozen=True)
-class RetrievalAssessment:
-    candidate_count: int
-    generator_agreement: float
-    top10_stability: float
-```
-
-The planner's `focus_score` is an uncalibrated control score in `[0, 1]`, not a
-probability of the Buying scenario. Decision stages, parser certainty, entropy,
-margin, and calibrated confidence remain planned diagnostics.
-
-### 5.4 Current retrieval and ranking contracts
-
-```python
-@dataclass(frozen=True)
-class RetrievalPlan:
-    focus_score: float
-    generator_weights: dict[str, float]
-    generator_limit: int
-
-
-@dataclass
-class CandidateEvidence:
-    parent_asin: str
-    generator_ranks: dict[str, int]
-    raw_scores: dict[str, float]
-    rrf_score: float
-    final_score: float
-
-
-@dataclass(frozen=True)
-class QuestionDecision:
-    ask_attribute: str | None
-    message: str | None
-    question_value: float | None
-    reason: str
-```
-
-Generator scores are retained for diagnostics; they are never directly added across algorithms without normalization or rank fusion.
-
-## 6. Catalog ingestion and indexes
-
-### 6.1 Validation
-
-`CatalogStore` streams `data/catalog.jsonl` once and currently validates:
-
-- each line is a JSON object;
-- `parent_asin` is present, non-empty, and unique;
-- `parent_asin` is present and non-empty;
-- identifiers are unique;
-- malformed optional numeric values are recorded as missing rather than fatal.
-
-The release checklist must separately verify the expected 50,000-record count
-and the published SHA-256 before judging. Bringing those checks into a dedicated
-loader is deferred; uniqueness failure is already fatal because exact identity
-is scored.
-
-### 6.2 Conservative normalization
-
-Text normalization uses:
-
-1. Unicode NFKC normalization;
-2. `str.casefold()` for lookup forms;
-3. whitespace collapse;
-4. punctuation-to-space only in token lookup views;
-5. preservation of raw text for phrase search and explanations.
-
-Do not stem brand names, sizes, model tokens, or product codes. Units are normalized through explicit rules, for example `in`, `inch`, and `inches` to an inch unit while retaining the numeric value.
-
-### 6.3 Catalog-derived attribute registry
-
-The API attribute names are fixed by the organizer contract. Product values are
-not hardcoded. `CatalogAttributeRegistry` derives them from category paths,
-store/brand, feature text, and normalized structured-detail keys. The mapping is
-declared once in `catalog/attributes.py`; interpreter and question policy share
-the same registry.
-
-```text
-material <- material, fabric, metal type
-color    <- color, colour
-size     <- size, excluding package/screen/file dimensions
-style    <- style, pattern, fit, neck, sleeve, closure, shape, theme
-use_case <- sport, occasion, recommended/specific uses, lifestyle
-brand    <- store, brand, brand name
-category <- category path
-budget   <- valid positive catalog prices
-feature  <- bounded feature vocabulary
-```
-
-For message resolution, the registry indexes normalized catalog phrases and
-prefers longer supported matches. The previous question is only a bounded
-contextual tie-break for short replies; explicit current cues win. For candidate
-partitioning, a prefix-pruned matcher infers supported values from product text
-while producing the same longest-first order as the reference scan.
-
-This is catalog generalization, not open-world understanding: a value absent
-from the frozen catalog may remain unresolved. Difficult subjective or implicit
-language is the optional LLM translator's narrow responsibility.
-
-The registry also computes O(1) metadata-coverage answerability priors and five
-log-space price quantiles. On the frozen catalog the boundaries are approximately
-`$9.99`, `$14.99`, `$22.88`, `$39.99`, and `$80.00`; a missing price stays
-unknown rather than entering a bucket.
-
-### 6.4 SQLite FTS5
-
-One in-memory table preserves field boundaries:
-
-```sql
-CREATE VIRTUAL TABLE products USING fts5(
-    parent_asin UNINDEXED,
-    title,
-    categories,
-    features,
-    details,
-    store,
-    description,
-    tokenize='unicode61 remove_diacritics 2'
-);
-```
-
-The field route starts with these BM25 weights:
-
-```text
-parent_asin  0.0
-title        6.0
-categories   4.0
-features     2.5
-details      2.5
-store        1.5
-description  1.0
-```
-
-An `fts5vocab` table supplies document frequency. Query construction retains at most 24 discriminative terms by descending IDF so long catalog-derived feature sentences do not create unbounded FTS expressions.
-
-### 6.5 Current lookup indexes
-
-`CatalogStore` builds:
-
-```python
-products: dict[str, ProductRecord]
-valid_ids: frozenset[str]
-products_vocab: SQLite fts5vocab table
-popular_ids: tuple[str, ...]
-attributes: CatalogAttributeRegistry
-```
-
-The FTS vocabulary supplies document frequencies and IDF. The attribute
-registry is evidence, not a hard filter: products with missing fields remain
-accessible through every lexical generator.
-
-## 7. MessageInterpreter
-
-### 7.1 Parsing order
-
-`MessageInterpreter.parse()` runs the following cascade:
-
-1. preserve the raw message;
-2. detect corrections, negative feedback, and explicit/no-context declines;
-3. extract category and evaluator/catalog payload spans;
-4. split conservative customer clauses and exclusions;
-5. resolve each value using explicit current evidence first, the immediately
-   preceding Clarification second, and feature fallback last;
-6. retain normalized values plus raw spans and provenance;
-7. optionally invoke `SemanticParser` for subjective or complex language;
-8. validate and return the immutable frame.
-
-Operation detection precedes value extraction. In `Actually, not black—make it white`, `actually` and the contrast determine that black is retracted and white replaces it.
-
-### 7.2 Deterministic rule engine
-
-The current MVP safely separates comma/semicolon-delimited inline constraints,
-removes discourse markers such as `preferably` and `make it ... instead`, and
-keeps catalog-shaped payloads intact even when a feature contains commas.
-Direct customer language such as `no leather` becomes an exclusion; catalog
-features such as `No Closure closure` remain positive searchable evidence.
-This provenance distinction prevents a lexical negation from reversing the
-meaning of frozen product metadata.
-
-The current interpreter and `ranking/budget.py` implement:
-
-| Language | Parsed operation |
+| Input field | Runtime representation when missing |
 |---|---|
-| `under`, `below`, `no more than`, `<=` | budget `LTE` |
-| `over`, `at least`, `>=` | budget `GTE` |
-| `between X and Y` | budget or size `RANGE` |
-| `around`, `roughly`, `about` | soft range using configurable tolerance |
-| `not`, `without`, `avoid`, `anything but` | scoped `exclude` |
-| comma/semicolon-separated requirements | independent additions |
-| `actually`, `instead`, `ignore earlier`, `make it` | `replace` or `clear` followed by `set` |
-| `no preference`, `either is fine`, `your judgment` | `set_any` for the last asked attribute |
-| `preferably`, `ideally`, `with` | preference-clause cleanup |
+| Text scalar | Empty string |
+| Text list/mapping | Empty tuple |
+| `price`, `average_rating` | `None` |
+| `rating_number` | `0` |
 
-Full conjunction scope, first-class OR groups, and general dependency-based
-negation remain deferred. Stopword filtering is never applied before operation
-parsing.
+The store builds an in-memory SQLite FTS5 table with the column order
+`parent_asin, title, categories, features, details, store, description`.
+`parent_asin` is unindexed. Four BM25 weight vectors emphasize all fields,
+titles, categories, or constraint-bearing metadata. The field-weighted route is
+kept as an independently measurable reliable baseline inside the ensemble.
 
-### 7.3 Contextual and elliptical replies
+`CatalogAttributeRegistry` derives values from catalog detail keys, stores,
+categories, and short feature terms. It supplies:
 
-The last structured question supplies a default attribute only when the reply does not name another attribute:
+- exact normalized value-to-attribute evidence;
+- per-product representative values for question partitioning;
+- catalog coverage/repetition priors for answerability; and
+- log-space price quantiles at 10%, 25%, 50%, 75%, and 90%.
 
-```text
-last ask=color, reply="navy"             -> set color=navy
-last ask=material, reply="no preference" -> set_any material
-last ask=size, reply="actually wide"     -> replace size=wide
-last ask=brand, reply="Nike"             -> add brand=Nike
-last ask=size, reply="7"                  -> add size=7
-last ask=budget, reply="80"               -> add budget="around $80"
-last ask=color, reply="no"                -> set_any color
-```
+Package dimensions are excluded from wearable-size evidence. Unstructured or
+missing values remain searchable text but do not become false typed facts.
 
-Explicit wording in the current message always outranks the default attribute.
-Context inheritance is limited to 100 characters and eight tokens, never uses
-the broad `other` question, and is disabled for an ungrounded correction. Bare
-affirmations such as `yes` are ignored because they contain no usable value.
-Single-digit numeric tokens remain searchable so shoe size `7` is not removed as
-noise. Every `SlotUpdate` records `source` as `explicit`, `contextual`, or
-`fallback`.
+## 5. Message interpretation
 
-### 7.4 Catalog grounding and deferred fuzzy linking
+`MessageInterpreter` receives one message and the immediately preceding
+`ask_attribute`. It returns an immutable `IntentFrame`; it never mutates session
+state.
 
-Exact normalized catalog-value grounding is implemented by
-`CatalogAttributeRegistry`. Fuzzy normalization is intentionally deferred
-because unrestricted edit-distance matching can turn misspellings into the
-wrong brand or size. A future linker may compare unmatched spans only with
-values from the inferred category and attribute using:
+Deterministic parsing order:
 
-```text
-link_score =
-    0.55 * token_jaccard
-  + 0.25 * SequenceMatcher_ratio
-  + 0.20 * category_compatibility
-```
+1. detect correction/override language;
+2. detect explicit or contextual no-preference replies;
+3. extract a leading requested category;
+4. preserve organizer-style payload evidence;
+5. split user-authored comma/semicolon constraints conservatively;
+6. separate exclusions using source-aware negation rules;
+7. resolve explicit attribute cues and catalog-supported values; and
+8. use the previous question only for a bounded short/elliptical answer.
 
-Initial acceptance rules:
+All regular expressions are named module constants (`CATEGORY_RE`,
+`OVERRIDE_RE`, `CUSTOMER_EXCLUSION_RE`, and so on). Attribute value lists are not
+hardcoded in the interpreter. For a reply such as `blue/`, explicit current
+evidence is checked first; if none exists and the previous question asked for
+color, the cleaned value becomes a contextual color update. Bare affirmation is
+not search evidence, while bare decline suppresses the asked attribute.
 
-- accept as an explicit normalized value when score `>= 0.84` and the margin over the second candidate is `>= 0.08`;
-- otherwise retain an ambiguity and the raw phrase;
-- never fuzzy-link one- or two-character values without a size context;
-- inferred links remain soft unless an exact alias corroborates them.
+Each `SlotUpdate` records attribute, operation, normalized value, raw span, and
+source (`explicit`, `contextual`, `fallback`, or `semantic`). This provenance is
+what lets catalog phrases such as `No Closure` remain positive features while a
+customer-authored `no leather` becomes an exclusion.
 
-These are design options, not current thresholds or claimed behavior.
+## 6. State reduction and overrides
 
-### 7.5 Provenance
+`SessionStore.reset()` creates a fresh `SessionState`, copying the aggregate
+profile and clearing all prior clarification observations. `StateReducer` is the
+only component that mutates `ActiveState`.
 
-The current deterministic parser records method provenance:
+State invariants:
 
-```text
-explicit    current words identify the attribute
-contextual  the immediate Clarification supplies the attribute
-fallback    no safe attribute was identified; retain as a feature phrase
-```
+- add/set operations retain unique active values;
+- replace operations supersede the value for that attribute;
+- `set_any` clears and suppresses the attribute;
+- exclusions remain separate from positive preferences;
+- a category-changing override clears incompatible preferences, slots, and
+  exclusions;
+- a preference correction removes only the stale preference it replaces; and
+- any override clears Recommendation Exposure because old rejection no longer
+  has the same meaning.
 
-The optional semantic adapter separately caps model-proposed confidence at
-`0.70`. Deterministic provenance is not presented as a calibrated probability.
+The optional model receives `ActiveState.context_snapshot()`, not concatenated
+chat history. Superseded evidence therefore cannot re-enter through the prompt.
 
-### 7.6 Optional semantic interpretation
+## 7. Retrieval planning and candidate generation
 
-The agent first parses and retrieves deterministically. `SemanticEscalationPolicy`
-then considers substantive messages with missing or malformed category evidence,
-or unresolved fallback spans / implicit outcome language combined with low
-Top-10 stability. The gate uses language structure and parser provenance rather
-than a fixed adjective or product-value list. An exact multi-token
-preference phrase in the leading deterministic product suppresses a call even
-when generator overlap is low. Short answers remain contextual and never
-escalate. These thresholds are initial engineering guesses and require more
-target-independent tuning.
-
-The concrete `ResponsesSemanticParser` sends a compact Context Snapshot to the
-configured SoCLaaS `/v1/responses` endpoint with bounded input/output, zero
-temperature, and the configured timeout. It forces one client-executed function
-tool whose strict schema requires at least one query rewrite. Function-call
-arguments are parsed locally; message-text JSON remains a compatibility fallback.
-The gateway does not execute application code or choose catalog identifiers.
-
-The response returns at most two rewrites, three subjective needs, and four soft
-slot hypotheses. `GatedSemanticParser` applies a process-level call cap, caches
-successful repeated message/context pairs, records credential-free call/token/
-latency counters, and never retries a failed billed request. If at least one
-rewrite or soft slot survives grounding, `StateReducer.apply_semantic()` adds
-only that delta without advancing the turn and the agent reruns retrieval once.
-
-`semantic_grounding.py` allows only `feature`, `style`, and `use_case` slots with
-an exact current-message evidence span and confidence at least `0.55`.
-Deterministic extraction wins for an attribute. Rewrites must share a lexical
-anchor with the current message or Active State; negated rewrites and generated
-ASIN-like identifiers are rejected. Subjective summaries remain diagnostic and
-do not enter BM25 directly. Invalid JSON, timeout, provider error, exhausted call
-budget, or incomplete configuration leaves the reliable path unchanged.
-
-### 7.7 Raw evidence preservation
-
-The interpreter emits both structured values and raw retrieval phrases. This is essential because public intent constraints range from short material values to long catalog feature text. A long feature sentence may be difficult to normalize but highly discriminative for lexical retrieval.
-
-## 8. Deterministic session state
-
-`SessionStore` is a `dict[session_id, SessionState]` protected by `threading.RLock`. `reset()` replaces any existing state for the same identifier. No state is shared across sessions.
-
-Only `StateReducer` modifies active state. It applies events in message order with these invariants:
-
-1. explicit current-session evidence outranks Customer Profile evidence;
-2. later explicit replacements deactivate earlier values for the same slot;
-3. compatible additions remain active;
-4. exclusions are stored separately from positive values;
-5. `set_any` clears active values for that attribute and suppresses profile evidence;
-6. category replacement clears incompatible category-specific size/style values;
-7. overridden evidence remains in audit history but not in `RetrievalRequest`;
-8. inferred evidence cannot replace explicit evidence;
-9. missing evidence does not clear an existing value.
-
-The reducer is event-sourced for traceability:
+The planner computes an uncalibrated control value, not a Buying probability:
 
 ```text
-IntentFrame -> tuple[SlotUpdate] -> apply -> ActiveState
+z = -1.10 + 0.95 * (#preferences + #exclusions) + 0.35 * has_category
+focus_score = sigmoid(z)
+route_weight = focus_score * focused_weight
+             + (1 - focus_score) * exploratory_weight
 ```
 
-Retrieval never uses concatenated raw chat as its only source. It uses Active State plus current raw phrases. This prevents stale override terms from re-entering the query.
+All five inexpensive generators run on every turn:
 
-## 9. Deferred NeedAssessor and current soft routing
-
-`NeedAssessor` does not predict a hidden evaluator label. It computes interpretable dimensions from the frame and Active State.
-
-### 9.1 Features and score
-
-```text
-category_specificity = 1 - log(1 + category_pool) / log(1 + 50_000)
-constraint_density   = min(explicit_active_constraints / 3, 1)
-numeric_specificity  = 1 if a size or budget range is active else 0
-lexical_specificity  = mean normalized IDF of current product terms
-parse_certainty      = future parser-confidence signal
-commitment           = min(hard_or_commitment_cues / 2, 1)
-exploration          = min(exploration_or_indifference_cues / 2, 1)
-unresolved_need_ratio= unresolved subjective clauses / max(all need clauses, 1)
-
-specificity = clip(
-    0.35 * category_specificity
-  + 0.25 * constraint_density
-  + 0.15 * numeric_specificity
-  + 0.15 * lexical_specificity
-  + 0.10 * parse_certainty,
-  0, 1
-)
-
-z = -0.25
-    + 1.20 * specificity
-    + 0.80 * commitment
-    - 1.00 * exploration
-    - 0.60 * unresolved_need_ratio
-
-focus_score = 1 / (1 + exp(-z))
-```
-
-When no category is grounded, `category_specificity=0`. For a term with document frequency `df` in `N=50_000` products:
-
-```text
-normalized_idf(term) = log((N + 1) / (df + 1)) / log(N + 1)
-```
-
-The constants are frozen configuration values recorded with every experiment. E7 compares this heuristic against uniform weights and a hard switch. If it does not improve held-out utility, uniform fusion remains the production choice.
-
-### 9.2 Decision stage
-
-Decision stage is descriptive and does not choose a route by itself:
-
-- `exploring`: exploration `>= 0.6` and fewer than two active explicit constraints;
-- `deciding`: specificity `>= 0.75` and commitment `>= 0.5`;
-- `narrowing`: at least one explicit constraint or resolved category;
-- otherwise `unknown`.
-
-## 10. Candidate generation
-
-Every non-empty request runs five cheap lexical rank lists: field, title,
-category relevance, category-conditioned popularity, and focused constraint
-retrieval. No cheap route is disabled by `focus_score`; the score only changes
-their fusion weights.
-
-### 10.1 Query construction
-
-`RetrievalRequest` contains current category hypotheses, raw and normalized product terms, hard constraints, exclusions, soft session preferences, unresolved subjective needs, non-suppressed profile tags, and turns remaining.
-
-FTS syntax is built only from escaped tokens generated by the application. User text is never interpolated directly into SQL or FTS expressions.
-
-Two lexical expressions are produced:
-
-1. a precision expression using exact phrases and `AND` between high-IDF category/product terms;
-2. a recall expression using `OR` across the top 24 IDF-ranked terms.
-
-If the precision expression returns fewer than the configured depth, the recall result fills the route.
-
-### 10.2 Title FTS generator
-
-- query only the `title` column;
-- retrieve depth 100;
-- emphasize exact product/category terms;
-- retain raw SQLite BM25 and rank.
-
-### 10.3 Field-weighted FTS generator
-
-- query title, categories, features, details, store, and description;
-- use the field weights from section 6.4;
-- retrieve depth 200;
-- include raw feature phrases and subjective terms;
-- use BM25 only for within-generator ordering.
-
-### 10.4 Category/attribute generator
-
-The inverted-index generator retrieves the union of category and positive attribute posting lists. It scores products using:
-
-```text
-attribute_score =
-    2.5 * verified_hard_matches
-  + 1.0 * verified_soft_matches
-  + 0.4 * category_match
-  - 6.0 * verified_hard_contradictions
-  - 1.0 * verified_soft_contradictions
-```
-
-Unknown product fields contribute zero. The generator returns the highest 150 products with deterministic ASIN tie-breaking.
-
-### 10.5 Category-conditioned popularity generator
-
-Broad category queries often give hundreds of products identical BM25 category
-evidence. ASIN tie-breaking can then exclude a plausible, well-established item
-before reranking. The reliable MVP therefore retrieves an `AND` category pool
-of up to 800 products and exposes two rank lists from the same pool:
-
-- `category`: original BM25 order for relevance;
-- `category_popular`: descending `rating_number`, then BM25 and ASIN.
-
-If the `AND` expression is empty, the pool falls back to `OR`. Popularity is a
-separate target-blind candidate source, not a catalog edit or inferred purchase
-history. Its RRF weight is lower when the active need is focused so explicit
-constraints can dominate. The depth of 800 and route weights are provisional
-engineering values requiring target-disjoint tuning.
-
-### 10.6 Optional dense generator
-
-Catalog embedding text is:
-
-```text
-title [SEP] leaf categories [SEP] features [SEP] selected details [SEP] description
-```
-
-At build time, encode with `all-MiniLM-L6-v2`, L2-normalize each vector, save the matrix and ASIN row mapping, and record the model identifier and catalog SHA-256.
-
-At query time, encode product terms plus unresolved subjective needs, normalize the query vector, compute cosine similarity with one matrix-vector dot product, and select the top 100 using `numpy.argpartition` followed by a stable sort.
-
-Dense retrieval is enabled when at least one condition holds:
-
-- unresolved subjective needs exist and cheap-generator agreement is below `0.25`;
-- more than 35% of meaningful query terms are unexplained by top lexical candidates;
-- the cheap union has fewer than 100 candidates.
-
-## 11. RetrievalAssessment and plan calibration
-
-The first three generators produce a cheap candidate union. `RetrievalAssessor` calculates target-blind query-performance features.
-
-### 11.1 Generator agreement
-
-For each pair of generators, compute Jaccard overlap over the first 50 results. Agreement is the mean pairwise value:
-
-```text
-agreement = mean(|A50 intersection B50| / |A50 union B50|)
-```
-
-### 11.2 Category entropy
-
-Use the most specific normalized category for each candidate. For candidate proportions `p_c`:
-
-```text
-H = -sum(p_c * log(p_c))
-normalized_entropy = H / log(number_of_nonempty_categories)
-```
-
-A high value means the result set is diffuse; it does not by itself mean the user is browsing.
-
-### 11.3 Normalized Query Commitment
-
-Convert field-FTS BM25 to a higher-is-better value, then calculate score dispersion over the top 20:
-
-```text
-NQC = std(top20_scores) / (abs(mean(top20_scores)) + 1e-9)
-```
-
-The observed range is normalized from development data and clipped to `[0, 1]`. This is a retrieval-confidence feature, not an official metric.
-
-### 11.4 Coverage, margin, and stability
-
-```text
-coverage = active_constraints_with_any_candidate_evidence / active_constraints
-margin   = (score_rank10 - score_rank11) / (abs(score_rank1) + 1e-9)
-```
-
-No active constraints yields coverage `1.0` with a `vacuous_coverage` reason code. Stability is the mean Jaccard overlap between nominal Top 10 and Top 10 produced by six deterministic `+/-10%` generator-weight perturbations.
-
-### 11.5 Calibration rules
-
-The planner starts from linearly blended endpoint weights:
-
-```text
-weight[g] = focus_score * focused_weight[g]
-          + (1 - focus_score) * exploratory_weight[g]
-```
-
-Initial endpoints:
-
-| Generator | Focused | Exploratory | Depth |
-|---|---:|---:|---:|
-| Title FTS | 1.0 | 0.7 | 100 |
-| Field FTS | 0.8 | 1.0 | 200 |
-| Attribute | 1.3 | 0.9 | 150 |
-| Dense | 0.6 | 1.2 | 100 |
-
-Post-retrieval diagnostics may adjust weights by at most 20%; they do not rewrite `NeedAssessment`:
-
-- low agreement and high entropy: increase field/dense recall weights;
-- strong constraint coverage: increase attribute weight;
-- exact title agreement across generators: increase title weight;
-- low stability: expand candidate depth before adding a model;
-- optional-stage latency budget exhausted: retain the cheap plan.
-
-## 12. Fusion, constraints, and ranking
-
-### 12.1 Weighted Reciprocal Rank Fusion
-
-For generator `g`, rank `r_g`, weight `w_g`, and constant `k=60`:
-
-```text
-RRF(product) = sum_g w_g / (k + r_g(product))
-```
-
-Products absent from a generator contribute zero. RRF is used because SQLite BM25, attribute scores, and cosine similarities are not numerically comparable.
-
-### 12.2 Tri-state constraints
-
-For every active constraint and product:
-
-- `match`: product evidence verifies the requirement;
-- `contradiction`: product evidence verifies incompatibility;
-- `unknown`: relevant product evidence is missing or insufficient.
-
-```text
-required material=cotton, product material=cotton      -> match
-required material=cotton, product material=polyester   -> contradiction
-required material=cotton, no material evidence         -> unknown
-budget <= 50, price=40                                  -> match
-budget <= 50, price=70                                  -> contradiction
-budget <= 50, price missing                             -> unknown
-```
-
-Unknown is never converted into contradiction.
-
-### 12.3 Lightweight reranker
-
-The reliable path reranks the full bounded union, up to 800 candidates. This is
-cheap term-set scoring, not a cross encoder; limiting it to the first 160 fused
-candidates prevented disclosed constraints from rescuing relevant products in
-the wider union. Let `idf_coverage` be the fraction of current query IDF mass
-present in the product and `exact_phrase_ratio` the fraction of active raw
-phrases found verbatim in normalized product text:
-
-```text
-popularity = min(1, log1p(rating_number) / log1p(20_000))
-profile_prior = min(0.03, 0.03 * profile_term_overlap)
-
-final_score =
-    0.52 * (rrf / max_rrf)
-  + 0.36 * idf_coverage
-  + 0.12 * exact_phrase_ratio
-  + profile_prior
-  + 0.18 * popularity
-  + 0.12 * budget_signal
-  - 0.70 * explicit_exclusion_match
-```
-
-The popularity count is capped so a bestseller cannot grow without bound.
-Missing fields add neither support nor contradiction. These weights and the
-800-item depth are retained public-set engineering values, not learned
-probabilities; target-disjoint tuning remains required. Final ties use RRF and
-then `parent_asin` ascending.
-
-`budget_signal` is `+1` for a catalog price inside an explicitly parsed range,
-`-1` outside a hard upper/lower/range bound, and `0` when either the budget or
-product price is missing. `around` uses a provisional `max($10, 25%)` tolerance
-and a softer `-0.5` outside it. The signal did not change the public score
-because budget answers arrived after existing hits, so its weight still needs a
-dedicated real-user and target-disjoint ablation.
-
-### 12.4 Optional cross-encoder
-
-The cross encoder receives at most 30 `(active need text, compact product text)` pairs. It returns one relevance score per supplied ASIN and cannot introduce new products.
-
-It is enabled only when candidate recall at depth 30 is already strong, Top-10 stability is below `0.65` or the margin is below its tuned threshold, and its latency budget remains. Scores are min-max normalized and blended as:
-
-```text
-final = 0.70 * lightweight_score + 0.30 * semantic_score
-```
-
-Timeout, model error, or invalid output returns the lightweight order unchanged.
-
-## 13. CandidateBelief and Top10Confidence
-
-`CandidateBelief` is normalized ranking mass, not a claim of Bayesian calibration:
-
-```text
-q_i = exp((score_i - max_score) / temperature)
-      / sum_j exp((score_j - max_score) / temperature)
-```
-
-Temperature starts at `0.20` and is tuned only on held-out development folds. If tuning is unstable, use rank-decay mass `q_i proportional to 1 / (20 + rank_i)`.
-
-Top-10 confidence is target-blind:
-
-```text
-Top10Confidence = clip(
-    0.25 * top10_belief_mass
-  + 0.20 * generator_agreement
-  + 0.20 * top10_stability
-  + 0.15 * constraint_evidence_coverage
-  + 0.10 * normalized_top10_margin
-  + 0.10 * (1 - normalized_category_entropy),
-  0, 1
-)
-```
-
-This score is used for policy ordering and ablation. It must not be described as the probability that the hidden target is present unless separately calibrated and validated.
-
-### 13.1 Recommendation Exposure
-
-`SessionState` records every catalog product already returned during the current
-intent. After ranking, `RecommendationExposureController` preserves score order
-inside two partitions but places unseen candidates before previously shown ones.
-This avoids repeating an unchanged Top 10 after implicit or explicit rejection
-and expands useful catalog coverage across the ten-turn budget.
-
-An Intent Override clears Recommendation Exposure before retrieval. Earlier
-feedback was given under a different need, so a previously shown product may be
-valid under the corrected request. Exposure is a temporary ordering control,
-never a hard catalog exclusion.
-
-## 14. QuestionPolicy
-
-### 14.1 Action rule
-
-The normal action on turns 1 through 9 is `ask-and-recommend`. Recommendations are scored before a customer reply, so a question does not remove the current hit opportunity. Turn 10 recommends and sets `ask_attribute=None` because no reply can be used.
-
-The policy avoids attributes already marked `ANY`, exact repeated questions with no new evidence, attributes fully determined by a hard constraint, attributes with insufficient candidate evidence, and questions whose answers cannot change ordering.
-
-### 14.2 Candidate-partition value
-
-The reliable MVP partitions the top 50 candidates by an extracted value for
-each eligible attribute. It estimates candidate evidence coverage and Gini
-diversity. Confidence combines generator Top-10 stability with the amount of
-active preference evidence:
-
-```text
-confidence = min(1,
-    0.55 * top10_stability
-  + 0.45 * min(1, active_preference_count / 3)
-)
-
-QuestionValue(A) =
-    coverage(A)
-  * partition_gini(A)
-  * session_answerability(A)
-  * (1 - confidence)
-```
-
-The highest value above `0.08` is asked, with an exception after explicit
-negative feedback so the agent can continue recovery. There is no generic MTTC
-penalty for an ask-and-recommend response. The relevant cost is receiving an
-uninformative answer instead of a better clarification.
-
-### 14.3 Answerability and fallback
-
-Candidate coverage is the primary answerability signal. The deterministic
-tie-break order is:
-
-```text
-feature, material, color, style, size, use_case, budget, brand, category
-```
-
-The baseline prior is computed once from catalog metadata coverage and repeated
-value support; there is no per-attribute constant table. `SessionState` records
-whether each previous specific question was answered, declined, or redirected.
-A Beta-style posterior blends those outcomes with prior strength `3.0`, so a
-cooperative customer raises the value of remaining questions while declines
-lower it. `reset()` creates a fresh posterior for the next customer. Neither the
-prior nor the update inspects a target at runtime.
-
-```text
-session_answerability = (3 * catalog_prior + answered)
-                      / (3 + answered + declined_or_redirected)
-```
-
-If the previous specific question was declined or had no additional preference,
-ask `other` once before resuming specific partitions. This lets the customer
-name their own priority instead of enduring a serial catalog-field interview.
-If no specific attribute otherwise exceeds the threshold but undisclosed need
-evidence remains likely, the same broad fallback is used:
-
-```json
-{
-  "message": "What other requirement matters most for the item you want?",
-  "ask_attribute": "other"
-}
-```
-
-`other` is a recovery/fallback, not the only policy, because the public
-simulator treats it broadly and real users may answer it less specifically.
-
-### 14.4 Boundary handling
-
-When the customer reports no preference:
-
-1. emit `set_any(attribute)`;
-2. remove active/profile values for that attribute from retrieval;
-3. add the attribute to the no-repeat set;
-4. continue returning ten recommendations;
-5. use one broad recovery question so the customer can volunteer a different
-   priority, then resume non-repeated specific attributes only if needed.
-
-## 15. ResponseGuard and failure handling
-
-`ResponseGuard` is the last code executed before returning to the evaluator. It validates `message` and `ask_attribute`, removes invalid ASINs, deduplicates while preserving order, truncates to `min(top_k, 10)`, verifies non-negative token counts, and fills from deterministic field FTS if an upstream component fails.
-
-Fallback ladder:
-
-```text
-optional semantic parser fails -> rules + catalog parser
-dense generator fails          -> three cheap generators
-cross encoder fails            -> lightweight reranker
-one cheap generator fails      -> fuse remaining generators
-all advanced retrieval fails   -> field-weighted FTS
-empty query                    -> category fallback, then stable popularity fallback
-```
-
-No fallback may fabricate an ASIN.
-
-## 16. Configuration, secrets, and artifacts
-
-Runtime constants are frozen dataclasses in `shopping_copilot/config.py`. Each evaluator run records a canonical JSON representation and SHA-256 of the configuration.
-
-Secrets are read only from environment variables inside optional provider adapters. `.env` remains ignored; only `.env.example` may be committed. The reliable path requires no secret.
-
-The optional Responses-compatible adapter is enabled only when
-`SHOPPING_COPILOT_LLM_ENABLED` is true and `SOCLAAS_API_KEY`,
-`SOCLAAS_BASE_URL`, and an explicit `SHOPPING_COPILOT_LLM_MODEL` are set. There
-is deliberately no implicit credential or endpoint. Without complete opt-in the
-factory returns `DisabledSemanticParser`.
-
-`SHOPPING_COPILOT_LLM_MAX_CALLS` and
-`SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS` optionally override the default 16-call
-process budget and provisional 6-second hard timeout.
-
-The runtime loads only those approved values from the ignored repository `.env`
-or a file selected through `SHOPPING_COPILOT_ENV_FILE`; OS variables take
-precedence. Git ignore is not an access-control boundary, so credentials that
-must not reside in the workspace are injected by the user's shell or secret
-manager.
-
-Optional model calls require an explicit timeout, input-size limit, local shape
-validation and grounding, token accounting, deterministic fallback, and
-provider/model identifier in the run report.
-
-Generated indexes, vectors, traces, experiment reports, and research remain under ignored paths such as `artifacts/`, `experiments/`, and `analysis/`. Only source, tests, safe example configuration, and final product documentation are committed.
-
-## 17. Observability
-
-Each turn may write a local JSONL trace containing no hidden labels:
-
-```json
-{
-  "session_id": "...",
-  "turn": 2,
-  "dialogue_acts": ["inform"],
-  "slot_updates": ["material:add:cotton"],
-  "focus_score": 0.71,
-  "generator_counts": {"title": 100, "field": 200, "attribute": 150},
-  "generator_agreement": 0.22,
-  "top10_stability": 0.80,
-  "question": {"attribute": "feature", "value": 0.19},
-  "fallbacks": [],
-  "latency_ms": 84.2
-}
-```
-
-Tracing is optional and never required by the Agent.
-
-## 18. Testing strategy
-
-### 18.1 Unit tests
-
-| Module | Required cases |
+| Generator | Evidence and behavior |
 |---|---|
-| normalization | Unicode, punctuation, units, empty values, idempotence |
-| catalog loader | duplicate ASIN, malformed line, checksum, missing fields |
-| rule parser | budgets, ranges, negation scope, OR/AND, correction, `ANY` |
-| grounding | longest alias, ambiguity margin, category restriction, fuzzy rejection |
-| reducer | add, exclude, replace, category override, profile suppression |
-| FTS queries | escaping, empty query, deterministic rank, term limit |
-| category popularity | shared category pool, popularity ordering, stable tie-break |
-| attribute generator | match, contradiction, unknown, stable tie-break |
-| RRF | missing generator, weights, deterministic fusion |
-| retrieval assessment | agreement, entropy, NQC, margin, perturbation stability |
-| reranker | contradiction ordering, missing-data neutrality, capped profile prior |
-| recommendation exposure | unseen-first stability, repeat suppression, override reset |
-| question policy | useful feature, repeated attribute, boundary, turn 10 |
-| response guard | invalid/duplicate ASIN, Top-10 cap, invalid usage |
+| `field` | All active terms with field-weighted BM25 |
+| `title` | Category terms, falling back to all active terms |
+| `category` | AND category pool, then OR only if strict retrieval is empty |
+| `category_popular` | Same category pool reordered by rating count |
+| `constraint` | Rarest preference terms with AND, then safe OR fallback |
 
-### 18.2 Interpreter scenario corpus
+Each primary list is bounded at 160. The shared category pool and final rerank
+depth are 800. Raising these depths can improve long-tail recall but costs more
+SQLite and reranking time; a depth-320 rerank was measured and did not recover
+the useful deeper candidates.
 
-Maintain at least 100 hand-authored utterances covering product-led and need-led requests, subjective properties, alternatives, compound constraints, corrections, category overrides, negation scope, relative language, elliptical answers, no preference, profile conflicts, and paraphrases not copied from the evaluator.
+## 8. Fusion and retrieval assessment
 
-Measure exact operation accuracy, slot precision/recall/F1, relation accuracy, and full-frame accuracy. This corpus is an engineering test, not an official competition metric.
-
-### 18.3 Integration tests
-
-- Buying: a hard requirement immediately affects ranking.
-- Browsing: broad candidates accompany an informative clarification.
-- Intent Override: the stale value is absent before next retrieval.
-- Boundary: `ANY` suppresses the slot and prevents repetition.
-- Rejection: previously shown products move behind unseen candidates.
-- Intent Override: exposure resets because the active need changed.
-
-The official `tests/test_evaluator.py` remains unchanged.
-
-## 19. Evaluation and ablation protocol
-
-Public labels are available only to offline evaluation code. Runtime modules must not import `evaluator` or read `data/public_set.jsonl`.
-
-### 19.1 Metrics
-
-Official outcomes are Hit Rate@10, MRR, MTTC, Efficiency, TechnicalScore, and scenario breakdowns. Engineering diagnostics are candidate recall at 10/50/100/300, marginal generator recall, parser accuracy, override correctness, question answer rate, generator agreement, stability, latency, memory, tokens, cost, and fallbacks.
-
-### 19.2 Development split
-
-Treat the 200 public sessions as development data. The implemented protocol
-reserves a sealed 20% holdout, then creates four scenario-stratified folds from
-the remaining 80%. Exact normalized-title product families are grouped, with
-target ASIN as fallback, so near-duplicate product records cannot cross a
-partition. Learned parameters train on three working folds and validate on the
-fourth. Heuristic ablations use the same four folds and must not inspect the
-sealed holdout. See [evaluation-methodology.md](evaluation-methodology.md).
-
-### 19.3 Experiment order
-
-| ID | Change | Decision |
-|---|---|---|
-| E0 | Original starter | Frozen baseline |
-| E1 | CatalogStore with equivalent FTS | Must reproduce baseline |
-| E2 | Stateful raw-message control | Diagnostic only; exposes simulator sensitivity |
-| E3 | Typed interpreter and reducer | Keep if Override/Boundary correctness improves |
-| E4 | Title + field + category + category-popularity + constraint generators | Keep sources with positive marginal recall |
-| E5 | Uniform RRF | Multi-generator baseline |
-| E6 | Constraint reranker | Keep if MRR improves without recall regression |
-| E7 | Heuristic focus-score blending | Compare with uniform and hard switching |
-| E8 | RetrievalAssessment calibration | Keep if held-out Top-10 improves |
-| E9 | Candidate-belief question policy | Compare with fixed `feature`, fixed `other`, and recommend-only |
-| E10 | Optional dense generator | Keep only for measured lexical recall gaps |
-| E11 | Optional cross encoder/LLM | Keep only for held-out gain within budget |
-
-Change one material variable per experiment and preserve run artifacts locally.
-
-## 20. Performance budgets
-
-Initial engineering budgets, subject to organizer limits:
+Weighted Reciprocal Rank Fusion avoids comparing incompatible raw BM25 scales:
 
 ```text
-catalog startup                 <= 10 seconds on a laptop
-reliable-path p95 respond       <= 500 ms
-dense-path p95 respond          <= 1.5 seconds
-optional model hard timeout     <= 6 seconds (provisional live-probe value)
-peak memory without embeddings  <= 500 MiB
-peak memory with embeddings     <= 1 GiB
-contract failure rate           0
-invalid ASIN rate               0
+RRF(product) = sum_generator weight(generator) / (60 + rank_generator(product))
 ```
 
-## 21. Five-person ownership
+`CandidateEvidence` retains each generator rank, raw score, fused score, and
+final score. The union is deduplicated by `parent_asin`.
 
-| Workstream | Driver | Reviewer | Owned paths | Acceptance handoff |
-|---|---|---|---|---|
-| Catalog and indexes | Member 1 | Member 2 | `catalog/` | Reproducible store, field audit, startup/memory report |
-| Interpreter and state | Member 2 | Member 3 | `understanding/`, `dialog/reducer.py` | Parser corpus and four scenario transitions |
-| Retrieval and fusion | Member 3 | Member 4 | `retrieval/` | Candidate recall and marginal-source report |
-| Ranking and policy | Member 4 | Member 5 | `ranking/`, `dialog/policy.py` | Reranking and question-policy ablations |
-| Integration and evaluation | Member 5 | Member 1 | orchestrator, adapter, guard, tests | Canonical command and protected evaluator report |
+`RetrievalAssessment` computes pairwise Jaccard overlap across each non-empty
+generator's top 20:
 
-Only the integration owner changes `starter/agent.py` during final stabilization. Other workstreams integrate through typed interfaces and tests.
+```text
+agreement = mean(|A intersect B| / |A union B|)
+top10_stability = min(1, 2.5 * agreement)
+```
 
-## 22. Implementation sequence
+This is a target-blind control signal for question and model-call policies. It is
+not a calibrated probability that the hidden target is present.
 
-### Slice 1: reliable equivalent path
+## 9. Final reranking
 
-Implement `CatalogStore`, field-weighted FTS, `ResponseGuard`, and the orchestrator adapter. Reproduce E0 before adding features.
+The reranker processes the first 800 fused candidates. For product `p`:
 
-### Slice 2: interpreter and active state
+```text
+score(p) = 0.52 * normalized_RRF
+         + 0.36 * IDF_weighted_query_coverage
+         + 0.12 * exact_preference_phrase_ratio
+         + min(0.03, 0.03 * profile_tag_overlap)
+         + 0.18 * capped_log_rating_count
+         + 0.12 * budget_signal
+         - 0.70 * explicit_exclusion_contradiction
+```
 
-Implement domain types, deterministic rules, catalog grounding, `SessionStore`, and `StateReducer`. Add all four scenario integration tests.
+`budget_signal` is `+1` inside a parsed bound, `-1` outside a hard bound,
+`-0.5` outside an approximate bound, and `0` for missing/unparseable price.
+Profile overlap is deliberately capped so aggregate history cannot override a
+session request. Popularity uses `log1p(rating_number)` capped at 20,000; it is a
+tie-breaking prior, not purchase reconstruction.
 
-### Slice 3: multi-generator retrieval
+After reranking, `unseen_first` stably partitions unseen products ahead of
+already exposed products. Score order is preserved inside each partition.
 
-The five lexical routes and weighted RRF are implemented. A separate typed
-attribute route was tested and rejected: it duplicated constraint evidence,
-diffused the candidate union, regressed development score, and added latency.
-Keep optional models disabled by default.
+Every numeric control above lives in `submission/src/config.py`. Its adjacent
+comment explains what increasing/decreasing the value does and records the
+relevant measured experiment or explicitly states when no sweep is claimed.
 
-### Slice 4: assessment and reranking
+## 10. Clarification policy
 
-Generator-overlap assessment and the lightweight full-union reranker are
-implemented. Rich tri-state constraints, learned candidate belief, and
-calibrated Top-10 confidence remain deferred.
+Questions are selected from the top 50 reranked candidates. For one attribute:
 
-### Slice 5: clarification policy
+```text
+coverage = candidates with a representative value / candidates examined
+diversity = 1 - sum(value_share^2)
+confidence = 0.55 * top10_stability
+           + 0.45 * min(1, active_preference_count / 3)
+question_value = coverage * diversity * answerability * (1 - confidence)
+```
 
-Catalog-derived partitions, session-updated answerability, `other` recovery,
-and Boundary suppression are implemented. Further threshold tuning must use the
-working folds and preserve the sealed holdout.
+Catalog answerability starts from structured-field coverage and repeated-value
+support. Session replies update it with a Beta-style posterior:
 
-### Slice 6: retrieval-aware semantic stages
+```text
+posterior = (3 * catalog_prior + answered)
+            / (3 + answered + declined_or_redirected)
+```
 
-The two-pass escalation policy, strict function-tool adapter, cost gate, and
-grounded semantic delta are implemented. The function-tool request is mocked but
-not yet live-validated. Dense retrieval and a cross encoder remain deferred until
-a retained experiment documents the precise failure and benefit.
+The best unused, unsuppressed attribute is asked when value is at least `0.08`
+or the customer rejected the current results. The agent still recommends on the
+same turn. Turn 10 never asks. After a declined structured question, the policy
+offers one `other` recovery question so the customer can volunteer a priority;
+it does not serially interrogate every catalog field.
 
-## 23. Definition of done
+## 11. Optional semantic parser
 
-- one documented command runs the Agent from a clean checkout;
-- the official evaluator and protected inputs are unchanged;
-- all outputs satisfy the machine-readable contract;
-- every normal turn returns up to ten valid unique ASINs;
-- corrections replace stale state before retrieval;
-- already rejected recommendations are not repeated while unseen candidates exist;
-- Intent Override resets earlier Recommendation Exposure;
-- `ANY` suppresses its slot and future question;
-- candidate generators have marginal-recall measurements;
-- uniform, hard, and soft routing have controlled comparisons;
-- adaptive clarification is compared with fixed `feature`, fixed `other`, and no-question controls;
-- optional models have timeouts, token/cost reporting, and deterministic fallback;
-- scenario metrics, latency, memory, and configuration hash are reported;
-- no capability or metric is claimed without a reproducible run artifact.
+The SoCLaaS adapter uses the Responses-compatible endpoint with a forced strict
+client-executed function tool. It is disabled unless all required environment
+values are present and `SHOPPING_COPILOT_LLM_ENABLED` is true.
 
-## 24. References and deferred options
+The retrieval-aware gate escalates only when deterministic parsing leaves a
+fallback/implicit-language gap and ranking stability is low, the category shape
+is ambiguous, or a substantive request has no category. Short contextual replies
+and exact top-product phrase evidence suppress calls.
 
-### Challenge sources
+Local grounding rejects:
+
+- ASIN-shaped output;
+- unsupported material, color, size, brand, budget, or category slots;
+- unanchored rewrites and evidence spans;
+- negated semantic additions;
+- low-confidence or overlong hypotheses; and
+- duplicates of deterministic evidence.
+
+A process call cap, bounded successful-result cache, six-second timeout, input
+and output limits, non-secret diagnostics, and deterministic exception fallback
+contain cost and reliability risk. The provider remains off by default because a
+paired 50-session ablation spent tokens without improving a score.
+
+## 12. Response contract and failure handling
+
+`submission.agent.Agent` delegates `reset` and `respond` to `ShoppingAgent`.
+`ResponseGuard` then:
+
+1. clamps output to `min(top_k, 10)`;
+2. converts an unsupported `ask_attribute` to `None`;
+3. removes invalid and duplicate IDs while preserving order;
+4. fills a short list with valid catalog-popular IDs;
+5. emits a non-empty customer message; and
+6. clamps token counts to non-negative integers.
+
+If the main pipeline raises, the agent performs a bounded field-weighted catalog
+search over the current message and returns it through the same guard. A model
+timeout or invalid response becomes a semantic no-op rather than a whole-turn
+failure.
+
+## 13. Evaluation discipline
+
+The runtime imports neither evaluator code nor labels. Development uses four
+scenario-stratified, exact-title-family-disjoint 40-session folds; a fifth
+40-session holdout remains sealed until configuration freeze. The independent
+14-case consumer-language suite uses targets outside the public 200.
+
+Canonical commands from the repository root:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+python -m tests.stress.hard_evaluator
+python -m evaluator.local_evaluator
+```
+
+The post-refactor full-public replay scored Hit Rate `0.990`, MRR `0.617232`,
+MTTC `2.550`, Efficiency `0.845`, and TechnicalScore `0.849170`, with the model
+disabled and zero tokens. The immediate parent commit produced identical
+aggregates and zero session-level hit-turn/rank differences. The previously
+reported `0.863324` is retained only as a historical pre-generalization peak.
+
+## 14. Operational characteristics
+
+The standard-library-only offline path needs no GPU, model download, SDK, or
+external vector database. The latest local 40-first-turn audit measured 7.81 s
+catalog startup, 315 ms mean response, 574 ms p95, and 647 ms maximum. These are
+Windows development measurements, not guarantees for the organizer machine.
+
+## 15. Ownership map for five collaborators
+
+| Workstream | Primary code | Required integration proof |
+|---|---|---|
+| Catalog and attributes | `submission/src/catalog/` | Schema/missingness tests and startup profile |
+| Understanding and semantics | `submission/src/understanding/` | Parser corpus, grounding, zero-secret errors |
+| Dialog and state | `submission/src/dialog/` | Override, Boundary, question-policy tests |
+| Retrieval and ranking | `submission/src/retrieval/`, `ranking/` | Candidate/rank ablations and latency |
+| Integration and evaluation | `submission/agent.py`, `starter/`, `tests/`, docs | Contract suite and reproducible evaluator run |
+
+Cross-component changes should update typed boundaries and tests in the same
+commit. Only the integration owner changes the canonical entry point during
+release stabilization.
+
+## References
 
 - [Competition specification](competition_specification.md)
 - [Agent API contract](agent_api_contract.json)
-- [Evaluation configuration](evaluation_config.json)
-- [Published baseline](baseline_results.json)
-- [Amazon Reviews 2023](https://amazon-reviews-2023.github.io/)
-
-### Algorithm sources
-
-- [Explicit Attribute Extraction in e-Commerce Search](https://aclanthology.org/2024.ecnlp-1.13/) — transformer NER and two-stage normalization.
-- [Implicit Query Parsing for Product Search](https://www.amazon.science/publications/implicit-query-parsing-for-product-search) — explicit versus behavior-derived implicit attributes.
-- [TripPy](https://aclanthology.org/2020.sigdial-1.4/) — copying evidence from message, system memory, and prior state.
-- [Predicting Query Performance](https://doi.org/10.1145/564376.564429) — clarity and post-retrieval confidence.
-- [Reciprocal Rank Fusion](https://doi.org/10.1145/1571941.1572114) — rank-level fusion of incomparable retrievers.
-- [RouterRetriever](https://arxiv.org/abs/2409.02685) — lightweight routing over retrieval experts.
-- [Learning to Ask Good Questions](https://aclanthology.org/P18-1255/) — expected value of clarification.
-- [ProductAgent](https://arxiv.org/abs/2407.00942) — dynamic product retrieval and strategic clarification.
-- [Towards Translating Objective Product Attributes Into Customer Language](https://aclanthology.org/2024.naacl-industry.20/) — subjective needs versus objective catalog attributes.
-
-### Deferred options
-
-| Option | Adopt only when | Evidence required |
-|---|---|---|
-| Learned logistic route calibration | Heuristic focus score helps but is inconsistent | Out-of-fold utility gain and calibration report |
-| Content-derived product graph | Alias/co-occurrence expansion is a recall bottleneck | Marginal recall gain without candidate diffusion |
-| Dense embeddings | Vocabulary mismatch misses targets | Candidate recall gain at 100/300 within memory budget |
-| Cross encoder | Candidate recall is high but MRR is low | Held-out MRR gain within latency budget |
-| LLM structured parser | Rule/catalog parser leaves important clauses unresolved | Grounded-frame accuracy and end-to-end gain with locally valid output |
-| Maximal marginal relevance | Near-duplicate exploratory results are measured | Browsing gain without overall Hit Rate loss |
-
-Do not implement collaborative filtering, purchase-sequence models, social signals, multimodal retrieval, or review-based inference: the Agent does not receive the required source data.
+- [Evaluation methodology](evaluation-methodology.md)
+- [Measured findings](findings.md)
+- [System flowcharts](system-flowcharts.md)
+- [LLM integration and cost evidence](llm-integration.md)
+- [Engineering TODO and alternatives](../TODO.md)

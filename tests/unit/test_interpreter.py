@@ -165,7 +165,9 @@ class MessageInterpreterTest(unittest.TestCase):
 
             def interpret_eligible(self, message: str, context: str) -> SemanticInterpretation:
                 self.calls += 1
-                return SemanticInterpretation(query_rewrites=("water resistant windbreaker commute",))
+                return SemanticInterpretation(
+                    query_rewrites=("water resistant windbreaker commute",)
+                )
 
         provider = ForcedSemanticParser()
         interpreter = MessageInterpreter(provider)

@@ -38,10 +38,15 @@ class StateReducer:
                     if not active.slot_values[attribute]:
                         active.slot_values.pop(attribute)
         if frame.category_phrases:
-            if frame.override and any(update.attribute.value == "category" for update in frame.slot_updates):
+            if frame.override and any(
+                update.attribute.value == "category" for update in frame.slot_updates
+            ):
                 active.category_phrases.clear()
             _append_unique(active.category_phrases, frame.category_phrases)
-        _append_unique(active.preference_phrases, (*frame.preference_phrases, *frame.query_rewrites))
+        _append_unique(
+            active.preference_phrases,
+            (*frame.preference_phrases, *frame.query_rewrites),
+        )
         _append_unique(active.exclusions, frame.exclusions)
         for update in frame.slot_updates:
             attribute = update.attribute.value
@@ -67,7 +72,11 @@ class StateReducer:
         attribute = state.last_ask_attribute
         if not attribute or attribute == "other" or attribute in state.clarification_outcomes:
             return
-        updates = tuple(update for update in frame.slot_updates if update.attribute.value == attribute)
+        updates = tuple(
+            update
+            for update in frame.slot_updates
+            if update.attribute.value == attribute
+        )
         if any(update.operation == "set_any" for update in updates):
             state.clarification_outcomes[attribute] = "declined"
         elif any(update.operation in {"add", "replace"} and update.value for update in updates):

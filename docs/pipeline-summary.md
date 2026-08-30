@@ -64,8 +64,7 @@ protocol with deterministic fallback. The 14-case hard suite measures language
 outside the public simulator. An offline ideal-rewrite replay recovered both
 deterministic misses, but two capped live text-output runs produced no accepted
 hints. A strict forced function-tool path is now mocked but not live-validated.
-NumPy/MiniLM dense retrieval and a Top-N cross encoder remain unimplemented
-alternatives.
+Unimplemented alternatives are listed only in [`../TODO.md`](../TODO.md).
 
 ## Important semantics
 
@@ -80,21 +79,22 @@ alternatives.
 - `ANY` clears and suppresses an attribute and prevents repeat questions.
 - ask-and-recommend preserves the current hit opportunity, so the main question is which attribute to ask.
 
-## Implementation order
+## Implemented stages
 
-1. Reproduce the starter through `CatalogStore` and `ResponseGuard`.
-2. Add deterministic interpretation and Active State.
-3. Add five lexical rank lists and weighted RRF. **Done.**
-4. Add full-union lightweight reranking and exposure control. **Done.**
-5. Add adaptive specific questions and one broad recovery. **Done.**
-6. Add tri-state structured constraints, dense retrieval, or model reranking only
-   for a measured remaining failure. **Deferred.**
+1. `CatalogStore` and `ResponseGuard` provide the reliable contract path.
+2. Deterministic interpretation and Active State preserve current intent.
+3. Five lexical rank lists feed weighted RRF.
+4. Full-union reranking and exposure control order the final candidates.
+5. Adaptive specific questions and one broad recovery guide later turns.
 
 A separate typed-attribute candidate route and positive structured reranker were
 tested on the four development folds and rejected. They duplicated existing
 constraint evidence, lowered the score, and increased latency. The retained
 system already fuses five independently weighted candidate lists before a
 feature-based reranker.
+
+Remaining work and alternative implementations are centralized in
+[`../TODO.md`](../TODO.md).
 
 ## Evaluation order
 

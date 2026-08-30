@@ -56,6 +56,7 @@ MAX_SLOT_VALUE_CHARS = 120
 MAX_EVIDENCE_CHARS = 160
 MAX_PROVIDER_SLOT_CONFIDENCE = 0.70
 COMPLEX_MESSAGE_MIN_TERMS = 8
+REQUIRED_SLOT_KEYS = frozenset({"attribute", "value", "confidence", "evidence"})
 
 # Direct GatedSemanticParser defaults support isolated tests. Production always
 # supplies AgentConfig values. Raising the caps increases cost/memory; lowering
@@ -144,7 +145,9 @@ def _default_transport(request: urllib.request.Request, timeout: float) -> dict:
     except urllib.error.HTTPError as error:
         raise SemanticParserError(f"semantic provider returned HTTP {error.code}") from None
     except (urllib.error.URLError, TimeoutError) as error:
-        raise SemanticParserError(f"semantic provider unavailable: {type(error).__name__}") from None
+        raise SemanticParserError(
+            f"semantic provider unavailable: {type(error).__name__}"
+        ) from None
 
 
 class ResponsesSemanticParser:
@@ -195,7 +198,10 @@ class ResponsesSemanticParser:
                 {
                     "type": "function",
                     "name": SEMANTIC_TOOL_NAME,
-                    "description": "Return grounded catalog-search rewrites and optional soft shopping hypotheses.",
+                    "description": (
+                        "Return grounded catalog-search rewrites and optional "
+                        "soft shopping hypotheses."
+                    ),
                     "parameters": SEMANTIC_SCHEMA,
                     "strict": True,
                 }
@@ -231,7 +237,9 @@ class ResponsesSemanticParser:
                 try:
                     value = json.loads(arguments)
                 except json.JSONDecodeError:
-                    raise SemanticParserError("semantic function arguments were not valid JSON") from None
+                    raise SemanticParserError(
+                        "semantic function arguments were not valid JSON"
+                    ) from None
             break
 
         output_text: str | None = None
@@ -271,7 +279,7 @@ class ResponsesSemanticParser:
         for item in raw_hypotheses:
             if len(hypotheses) >= MAX_SLOT_HYPOTHESES:
                 break
-            if not isinstance(item, dict) or not {"attribute", "value", "confidence", "evidence"}.issubset(item):
+            if not isinstance(item, dict) or not REQUIRED_SLOT_KEYS.issubset(item):
                 continue
             attribute = item["attribute"]
             value_text = item["value"]
@@ -401,7 +409,9 @@ def semantic_parser_from_environment(config: AgentConfig) -> SemanticParser:
     )
 
 
-def configured_responses_parser_from_environment(config: AgentConfig) -> ResponsesSemanticParser | None:
+def configured_responses_parser_from_environment(
+    config: AgentConfig,
+) -> ResponsesSemanticParser | None:
     """Build an ungated provider for diagnostics, or return ``None`` safely."""
 
     load_runtime_environment()
@@ -436,7 +446,9 @@ def _responses_url(base_url: str) -> str:
         raise ValueError("base_url must be an absolute HTTP(S) URL")
     if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError("remote base_url must use HTTPS")
-    return normalized if parsed.path.rstrip("/").endswith("/responses") else f"{normalized}/responses"
+    if parsed.path.rstrip("/").endswith("/responses"):
+        return normalized
+    return f"{normalized}/responses"
 
 
 def _strip_json_fence(value: str) -> str:

@@ -33,22 +33,34 @@ class LightweightReranker:
         idf = self.store.inverse_document_frequency(query_terms)
         denominator = sum(idf.values()) or 1.0
         max_rrf = max(item.rrf_score for item in candidates) or 1.0
-        phrases = [tuple(tokenize(value, drop_stopwords=False)) for value in active.preference_phrases]
+        phrases = [
+            tuple(tokenize(value, drop_stopwords=False))
+            for value in active.preference_phrases
+        ]
         exclusion_terms = [set(tokenize(value)) for value in active.exclusions]
-        profile_terms = set(tokenize(" ".join(str(value) for value in customer_profile.get("preference_tags", []))))
+        profile_text = " ".join(
+            str(value) for value in customer_profile.get("preference_tags", [])
+        )
+        profile_terms = set(tokenize(profile_text))
 
         rerankable = candidates[: self.config.rerank_depth]
         remainder = candidates[self.config.rerank_depth :]
         for candidate in rerankable:
             product_terms = self.store.product_terms(candidate.parent_asin)
-            coverage = sum(weight for term, weight in idf.items() if term in product_terms) / denominator
+            coverage = (
+                sum(weight for term, weight in idf.items() if term in product_terms)
+                / denominator
+            )
             product_token_text = self.store.product_token_text(candidate.parent_asin)
             exact_count = sum(
                 int(bool(phrase) and " ".join(phrase) in product_token_text)
                 for phrase in phrases
             )
             exact_ratio = exact_count / max(1, len(phrases))
-            contradiction = any(values and values.issubset(product_terms) for values in exclusion_terms)
+            contradiction = any(
+                values and values.issubset(product_terms)
+                for values in exclusion_terms
+            )
             profile_overlap = len(product_terms & profile_terms) / max(1, len(profile_terms))
             profile_score = self.config.profile_score_cap * min(1.0, profile_overlap)
             product = self.store.get(candidate.parent_asin)

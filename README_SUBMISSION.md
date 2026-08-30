@@ -20,14 +20,16 @@ LLM disabled.
 
 | Metric | Published starter | Shopping Copilot |
 |---|---:|---:|
-| Hit Rate@10 | 0.125 | **0.995** |
-| MRR | 0.068034 | **0.635746** |
-| MTTC | 9.81 turns | **2.245 turns** |
-| Efficiency | — | **0.8755** |
-| TechnicalScore | 0.107 | **0.863324** |
+| Hit Rate@10 | 0.125 | **0.990** |
+| MRR | 0.068034 | **0.617232** |
+| MTTC | 9.81 turns | **2.550 turns** |
+| Efficiency | 0.119 | **0.845** |
+| TechnicalScore | 0.106710 | **0.849170** |
 
 These are public-development results, not a claim about the private 800-session
-evaluation. One public target remains unfound.
+evaluation. This current generalized implementation misses two public sessions.
+The higher `0.863324` score in the experiment history belongs to an earlier,
+less-generalized configuration and is not presented as the current result.
 
 ## The product experience
 
@@ -166,14 +168,14 @@ PowerShell:
 
 ```powershell
 $env:SHOPPING_COPILOT_LLM_ENABLED = "0"
-python -m unittest discover -v
+python -m unittest discover -s tests -p "test_*.py"
 python -m evaluator.local_evaluator
 ```
 
 macOS or Linux:
 
 ```bash
-SHOPPING_COPILOT_LLM_ENABLED=0 python -m unittest discover -v
+SHOPPING_COPILOT_LLM_ENABLED=0 python -m unittest discover -s tests -p "test_*.py"
 SHOPPING_COPILOT_LLM_ENABLED=0 python -m evaluator.local_evaluator
 ```
 
@@ -184,12 +186,13 @@ when reporting results.
 
 | What you want to understand | File |
 |---|---|
-| Required entry point | [`starter/agent.py`](starter/agent.py) |
-| End-to-end decision loop | [`shopping_copilot/agent.py`](shopping_copilot/agent.py) |
-| Typed state and contracts | [`shopping_copilot/contracts.py`](shopping_copilot/contracts.py) |
-| Intent and constraint extraction | [`shopping_copilot/understanding/`](shopping_copilot/understanding/) |
-| Candidate generation and ranking | [`shopping_copilot/retrieval/`](shopping_copilot/retrieval/) |
-| Clarification policy | [`shopping_copilot/dialog/`](shopping_copilot/dialog/) |
+| Required entry point | [`submission/agent.py`](submission/agent.py) |
+| Evaluator compatibility shim | [`starter/agent.py`](starter/agent.py) |
+| End-to-end decision loop | [`submission/src/agent.py`](submission/src/agent.py) |
+| Typed state and contracts | [`submission/src/contracts.py`](submission/src/contracts.py) |
+| Intent and constraint extraction | [`submission/src/understanding/`](submission/src/understanding/) |
+| Candidate generation and ranking | [`submission/src/retrieval/`](submission/src/retrieval/) |
+| Clarification policy | [`submission/src/dialog/`](submission/src/dialog/) |
 | Full technical architecture | [`docs/architecture.md`](docs/architecture.md) |
 | End-to-end and component flowcharts | [`docs/system-flowcharts.md`](docs/system-flowcharts.md) |
 | Experiments, including failures | [`docs/findings.md`](docs/findings.md) |

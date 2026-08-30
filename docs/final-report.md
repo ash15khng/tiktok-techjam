@@ -1,26 +1,37 @@
-# Shopping Copilot MVP — Final Refinement Report
+# Shopping Copilot Final Implementation Report
 
 ## Outcome
 
 The current branch contains a working, offline-first conversational product
-retriever that follows the official `starter.agent.Agent` contract. It returns
+retriever that follows the official `submission.agent.Agent` contract. It returns
 valid frozen-catalog IDs on every usable turn, asks at most one structured
 question, maintains session state, handles intent corrections, and continues
 without an LLM or network.
 
-Historical complete-public development result from the unmodified evaluator:
+Complete-public development results from the unmodified evaluator:
 
-| Metric | Starter | Current MVP |
-|---|---:|---:|
-| Hit Rate@10 | 0.125 | 0.995 |
-| MRR | 0.068 | 0.636 |
-| MTTC | 9.81 | 2.245 |
-| TechnicalScore | 0.107 | 0.8633 |
+| Metric | Starter | Current code | Historical peak |
+|---|---:|---:|---:|
+| Hit Rate@10 | 0.125 | 0.990 | 0.995 |
+| MRR | 0.068 | 0.617232 | 0.635746 |
+| MTTC | 9.81 | 2.550 | 2.245 |
+| TechnicalScore | 0.106710 | 0.849170 | 0.863324 |
 
-This is a historical public-set engineering result, not an estimate of the 800
-private sessions or the current tuning loop. New work uses a sealed 20% holdout
+The current result was replayed after refactoring with zero session-level
+differences from the immediate parent commit. The historical peak predates the
+generalization work and is not the current submission result. Neither result
+estimates the 800 private sessions. New work uses a sealed 20% holdout
 and four scenario-stratified, target/title-family-disjoint working folds. Their
 locked 160-session score is `0.851762`; the holdout remains unopened.
+
+Current full-public scenario breakdown:
+
+| Scenario | Hit Rate@10 | MRR | MTTC |
+|---|---:|---:|---:|
+| Buying | 0.987500 | 0.594678 | 1.925000 |
+| Browsing | 1.000000 | 0.591478 | 2.512500 |
+| Intent Override | 0.966667 | 0.661799 | 4.266667 |
+| Boundary | 1.000000 | 0.870000 | 2.700000 |
 
 ## Implemented product
 
@@ -152,22 +163,9 @@ The first live LLM output also showed why grounding is necessary: it proposed
 plausible category, material, and color values that were not explicitly stated.
 Those slots were rejected while its two useful anchored rewrites were retained.
 
-The remaining historical public miss is a low-volume novelty item in a large tie group.
-Directly boosting it would overfit. A defensible next experiment is a
-   target-blind long-tail/diversity generator evaluated with the working folds.
-
-## Before submission
-
-1. Run the canonical unit tests and evaluator on the final judging machine.
-2. Verify the catalog SHA-256 and keep `data/catalog.jsonl` out of Git.
-3. Add all five team members' contribution statements.
-4. Obtain provider pricing and validate the new forced function-tool request with
-   one capped smoke call before any further paid suite. Keep semantics disabled
-   by default until a live run accepts grounded hints and improves a hard case.
-5. Freeze configuration, evaluate the sealed holdout once, then perform one
-   complete-public compatibility replay. Do not tune after the holdout result or
-   to the one remaining historical public ASIN.
-6. Rehearse the two-turn demo described in [interaction-examples.md](interaction-examples.md).
+The historical long-tail miss demonstrates why directly boosting an individual
+public ASIN would overfit. Remaining engineering and release actions are kept in
+the repository-level [TODO.md](../TODO.md).
 
 Detailed experiments are in [findings.md](findings.md); prioritized work and
-alternative implementations are in [todo.md](todo.md).
+alternative implementations are in [TODO.md](../TODO.md).

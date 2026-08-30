@@ -68,7 +68,12 @@ class QuestionPolicy:
         )
         if previous_question_unanswered and "other" not in unavailable:
             value = max(0.0, self.config.unanswered_recovery_weight * (1.0 - confidence))
-            return QuestionDecision("other", QUESTION_TEXT["other"], value, "unanswered_question_recovery")
+            return QuestionDecision(
+                "other",
+                QUESTION_TEXT["other"],
+                value,
+                "unanswered_question_recovery",
+            )
 
         values: list[tuple[float, str]] = []
         for attribute in QUESTION_ATTRIBUTE_ORDER:
@@ -78,7 +83,12 @@ class QuestionPolicy:
             grounded = [value for value in groups if value]
             coverage = len(grounded) / max(1, len(top))
             counts = Counter(grounded)
-            diversity = 1.0 - sum((count / len(grounded)) ** 2 for count in counts.values()) if grounded else 0.0
+            diversity = (
+                1.0
+                - sum((count / len(grounded)) ** 2 for count in counts.values())
+                if grounded
+                else 0.0
+            )
             prior = self._baseline_answerability(attribute)
             answerability = state.answerability_posterior(
                 prior,
@@ -93,7 +103,12 @@ class QuestionPolicy:
                 key=lambda pair: (pair[0], -QUESTION_ATTRIBUTE_ORDER.index(pair[1])),
             )
             if best_value >= self.config.question_value_threshold or state.last_feedback_negative:
-                return QuestionDecision(best_attribute, QUESTION_TEXT[best_attribute], best_value, "candidate_partition")
+                return QuestionDecision(
+                    best_attribute,
+                    QUESTION_TEXT[best_attribute],
+                    best_value,
+                    "candidate_partition",
+                )
         if (
             "other" not in unavailable
             and confidence < self.config.broad_recovery_confidence_ceiling

@@ -55,4 +55,8 @@ def tokenize(value: str, *, drop_stopwords: bool = True) -> tuple[str, ...]:
     tokens = tuple(token.casefold() for token in TOKEN_RE.findall(normalize_text(value)))
     if not drop_stopwords:
         return tokens
-    return tuple(token for token in tokens if (len(token) > 1 or token.isdigit()) and token not in STOPWORDS)
+    return tuple(
+        token
+        for token in tokens
+        if (len(token) > 1 or token.isdigit()) and token not in STOPWORDS
+    )

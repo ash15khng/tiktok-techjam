@@ -1,4 +1,4 @@
-# MVP To-do and Alternatives
+# Engineering TODO and Alternatives
 
 ## Prioritized work
 
@@ -43,3 +43,13 @@ Adopt these only when a measured failure justifies them:
 
 An external vector database, full-model training, multimodal retrieval, identity
 reconstruction, and transaction handling remain unnecessary or out of scope.
+
+## Adoption gates for a new NLP component
+
+Before adding a trained NLP model or linker, require:
+
+1. parser-corpus improvement beyond deterministic context and catalog aliases;
+2. no material regression in working-fold or target-disjoint metrics;
+3. acceptable cold-start, p95 latency, memory, and install footprint;
+4. deterministic fallback when the model or asset is absent; and
+5. explicit setup, dependency, model, cost, and limitation disclosure.

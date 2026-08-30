@@ -36,16 +36,6 @@ It did not resolve the shopping-domain decision:
   brand;
 - noun/dependency structure did not map subjective needs to catalog attributes.
 
-The immediate question already supplies stronger evidence for these cases. A
-catalog-derived brand/category/value linker is therefore a better next
-investment than a general-purpose NLP dependency.
-
-## Retention rule
-
-A future NLP component must demonstrate all of the following before adoption:
-
-1. parser-corpus improvement beyond deterministic context and catalog aliases;
-2. no material regression in public or target-disjoint metrics;
-3. acceptable cold-start, p95 latency, memory, and install footprint;
-4. deterministic fallback when the model or asset is absent;
-5. explicit disclosure in setup and submission documentation.
+The immediate question already supplies stronger evidence for these cases, so
+spaCy is not a runtime dependency. Reconsideration criteria and alternative
+linkers are centralized in [`../TODO.md`](../TODO.md).

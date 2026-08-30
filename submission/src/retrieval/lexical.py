@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from submission.src.catalog.models import CatalogSearchResult
 from submission.src.catalog.store import (
     CATEGORY_WEIGHTS,
     CONSTRAINT_WEIGHTS,
@@ -9,7 +10,6 @@ from submission.src.catalog.store import (
     TITLE_WEIGHTS,
     CatalogStore,
 )
-from submission.src.catalog.models import CatalogSearchResult
 from submission.src.config import AgentConfig
 from submission.src.dialog.models import ActiveState
 from submission.src.retrieval.models import RetrievalPlan

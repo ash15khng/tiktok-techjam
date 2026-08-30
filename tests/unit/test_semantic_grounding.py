@@ -18,7 +18,12 @@ class SemanticGroundingTest(unittest.TestCase):
             ),
             subjective_needs=("comfortable in humid weather", "unrelated snow gear"),
             slot_hypotheses=(
-                SemanticSlotHypothesis("use_case", "outdoor wedding", 0.70, "humid outdoor wedding"),
+                SemanticSlotHypothesis(
+                    "use_case",
+                    "outdoor wedding",
+                    0.70,
+                    "humid outdoor wedding",
+                ),
                 SemanticSlotHypothesis("feature", "waterproof", 0.70, "snow"),
                 SemanticSlotHypothesis("material", "leather", 0.70, "comfortable"),
                 SemanticSlotHypothesis("style", "formal", 0.40, "polished"),
@@ -67,7 +72,12 @@ class SemanticGroundingTest(unittest.TestCase):
             subjective_needs=("comfortable", "humidity resistant"),
             slot_hypotheses=(
                 SemanticSlotHypothesis("category", "wedding shoes", 0.70, "humid outdoor wedding"),
-                SemanticSlotHypothesis("material", "breathable material", 0.70, "humid outdoor wedding"),
+                SemanticSlotHypothesis(
+                    "material",
+                    "breathable material",
+                    0.70,
+                    "humid outdoor wedding",
+                ),
                 SemanticSlotHypothesis("color", "neutral color", 0.60, "polished shoes"),
             ),
         )

@@ -8,10 +8,10 @@ Project documentation:
 - Quick pipeline and technology summary: [`docs/pipeline-summary.md`](docs/pipeline-summary.md)
 - End-to-end and component-level Mermaid flowcharts: [`docs/system-flowcharts.md`](docs/system-flowcharts.md)
 - Full architecture, module boundaries, and five-person workstream map: [`docs/architecture.md`](docs/architecture.md)
-- MVP boundaries and canonical commands: [`docs/mvp.md`](docs/mvp.md)
-- Measured MVP behavior: [`docs/findings.md`](docs/findings.md)
+- Implementation boundaries and canonical commands: [`docs/implementation.md`](docs/implementation.md)
+- Measured implementation behavior: [`docs/findings.md`](docs/findings.md)
 - Leakage-resistant train/validation/holdout protocol: [`docs/evaluation-methodology.md`](docs/evaluation-methodology.md)
-- Prioritized follow-up work and alternatives: [`docs/todo.md`](docs/todo.md)
+- Prioritized follow-up work and alternatives: [`TODO.md`](TODO.md)
 - Optional semantic parser setup and expectations: [`docs/llm-integration.md`](docs/llm-integration.md)
 - Lightweight NLP experiment and decision: [`docs/nlp-evaluation.md`](docs/nlp-evaluation.md)
 - Expected real-user conversation behavior: [`docs/interaction-examples.md`](docs/interaction-examples.md)
@@ -47,7 +47,7 @@ mv catalog.jsonl data/catalog.jsonl
 
 Verify the downloaded file using the published `SHA256SUMS` file.
 
-## Run the Starter
+## Run the submission
 
 Python 3.10 or later is recommended. The starter uses only the Python standard library.
 
@@ -55,8 +55,10 @@ Python 3.10 or later is recommended. The starter uses only the Python standard l
 python3 -m evaluator.local_evaluator
 ```
 
-Edit `starter/agent.py` to implement your system. Do not edit the evaluator or public labels when reporting your local score.
-The command writes per-session results and aggregate metrics to `results.json`.
+The canonical entry point is `submission/agent.py`; `starter/agent.py` is only a
+compatibility shim for the unmodified organizer evaluator. Do not edit the
+evaluator or public labels when reporting a score. The command writes
+per-session results and aggregate metrics to `results.json`.
 
 The included weak BM25 starter scores Hit Rate@10 `0.125`, MRR `0.068034`, and
 MTTC `9.81` on the released public set. See `docs/baseline_results.json`.
@@ -110,7 +112,9 @@ docs/competition_specification.md participant rules and evaluation protocol
 docs/agent_api_contract.json      machine-readable Agent contract
 docs/evaluation_config.json       scoring configuration
 docs/baseline_results.json        reproducible weak-starter reference score
-starter/agent.py                  editable weak starter
+starter/agent.py                  evaluator compatibility shim
+submission/agent.py               final Agent entry point
+submission/src/                   final implementation modules
 evaluator/local_evaluator.py      public-set simulator and scorer
 ```
 

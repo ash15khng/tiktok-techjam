@@ -19,10 +19,22 @@ class ActiveState:
     asked_attributes: list[str] = field(default_factory=list)
 
     def category_terms(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(token for phrase in self.category_phrases for token in tokenize(phrase)))
+        return tuple(
+            dict.fromkeys(
+                token
+                for phrase in self.category_phrases
+                for token in tokenize(phrase)
+            )
+        )
 
     def preference_terms(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(token for phrase in self.preference_phrases for token in tokenize(phrase)))
+        return tuple(
+            dict.fromkeys(
+                token
+                for phrase in self.preference_phrases
+                for token in tokenize(phrase)
+            )
+        )
 
     def query_terms(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys((*self.preference_terms(), *self.category_terms())))
@@ -34,7 +46,11 @@ class ActiveState:
             f"category={'; '.join(self.category_phrases)}" if self.category_phrases else "",
             f"preferences={'; '.join(self.preference_phrases)}" if self.preference_phrases else "",
             f"exclusions={'; '.join(self.exclusions)}" if self.exclusions else "",
-            f"declined={','.join(sorted(self.suppressed_attributes))}" if self.suppressed_attributes else "",
+            (
+                f"declined={','.join(sorted(self.suppressed_attributes))}"
+                if self.suppressed_attributes
+                else ""
+            ),
         ]
         return " | ".join(part for part in parts if part)
 
@@ -62,7 +78,10 @@ class SessionState:
         """
 
         successes = sum(outcome == "answered" for outcome in self.clarification_outcomes.values())
-        failures = sum(outcome in {"declined", "redirected"} for outcome in self.clarification_outcomes.values())
+        failures = sum(
+            outcome in {"declined", "redirected"}
+            for outcome in self.clarification_outcomes.values()
+        )
         bounded_prior = min(1.0, max(0.0, float(prior)))
         bounded_strength = max(0.01, float(strength))
         return (bounded_strength * bounded_prior + successes) / (

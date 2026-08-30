@@ -23,7 +23,10 @@ def reciprocal_rank_fusion(
     for generator, results in generator_results.items():
         weight = max(0.0, float(weights.get(generator, 0.0)))
         for rank, result in enumerate(results, 1):
-            evidence = evidence_by_id.setdefault(result.parent_asin, CandidateEvidence(result.parent_asin))
+            evidence = evidence_by_id.setdefault(
+                result.parent_asin,
+                CandidateEvidence(result.parent_asin),
+            )
             evidence.generator_ranks[generator] = rank
             evidence.raw_scores[generator] = result.raw_score
             evidence.rrf_score += weight / (k + rank)

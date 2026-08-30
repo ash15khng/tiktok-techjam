@@ -1,8 +1,8 @@
-# Shopping Copilot MVP
+# Shopping Copilot Implementation
 
 ## Purpose
 
-The MVP finds the exact frozen-catalog `parent_asin` as early as possible without
+The implementation finds the exact frozen-catalog `parent_asin` as early as possible without
 requiring a network, GPU, or model API. Semantic models remain optional.
 
 ## Current flow
@@ -40,8 +40,9 @@ instead of fixed `$25` buckets.
 
 ## Runtime boundaries
 
-- `starter/agent.py` exposes the official interface.
-- `shopping_copilot/agent.py` coordinates one response.
+- `submission/agent.py` exposes the official interface.
+- `starter/agent.py` preserves compatibility with the supplied evaluator.
+- `submission/src/agent.py` coordinates one response.
 - `catalog/` owns immutable products and search indexes.
 - `understanding/` converts messages into typed proposed updates.
 - `dialog/` owns Active State and clarification decisions.
@@ -54,7 +55,7 @@ Only valid catalog IDs can leave the response guard.
 ## Canonical commands
 
 ```bash
-python -m unittest discover -v
+python -m unittest discover -s tests -p "test_*.py"
 python -m evaluator.local_evaluator
 ```
 
@@ -64,15 +65,18 @@ Place the verified catalog at `data/catalog.jsonl` before evaluation.
 
 The unmodified official evaluator currently reports:
 
-| Metric | Baseline | MVP |
-|---|---:|---:|
-| Hit Rate@10 | 0.125 | 0.995 |
-| MRR | 0.068 | 0.636 |
-| MTTC | 9.81 | 2.245 |
-| TechnicalScore | 0.107 | 0.8633 |
+| Metric | Baseline | Current code | Historical peak |
+|---|---:|---:|---:|
+| Hit Rate@10 | 0.125 | 0.990 | 0.995 |
+| MRR | 0.068 | 0.617232 | 0.635746 |
+| MTTC | 9.81 | 2.550 | 2.245 |
+| TechnicalScore | 0.106710 | 0.849170 | 0.863324 |
 
-These are historical full-development-set measurements, not private-set
-estimates or the current tuning loop. New work uses four target/title-family-
+The current-code column was reproduced after the package refactor with zero
+session-level hit-turn/rank differences from its immediate parent commit. The
+historical peak predates the generalization changes and is not the current
+submission result. Neither column estimates private-set performance. New work
+uses four target/title-family-
 disjoint working folds and a sealed 20% holdout. See
 [evaluation-methodology.md](evaluation-methodology.md). The older 40-request
 audit measured 2.45 s startup and 265 ms p95 before the catalog registry;
@@ -104,8 +108,8 @@ new function-tool request is covered only by mocked tests. See
 ## Tuning status
 
 Route weights, candidate depths, the question threshold, and the popularity cap
-are good-enough initial values. They must be changed only through the working
-folds, then checked once on the sealed holdout after configuration freeze.
+are explicit in `submission/src/config.py`. Each comment records the effect of
+raising or lowering the value and the experiment, if any, supporting it.
 
-See [findings.md](findings.md) for measured behavior and [todo.md](todo.md) for
+See [findings.md](findings.md) for measured behavior and [TODO.md](../TODO.md) for
 remaining work and alternatives.

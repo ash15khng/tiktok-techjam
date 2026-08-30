@@ -8,7 +8,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from submission.src.config import AgentConfig
-from submission.src.contracts import DisabledSemanticParser, SemanticInterpretation, SemanticParserError
+from submission.src.contracts import (
+    DisabledSemanticParser,
+    SemanticInterpretation,
+    SemanticParserError,
+)
 from submission.src.understanding.semantic import (
     GatedSemanticParser,
     ResponsesSemanticParser,
@@ -111,7 +115,10 @@ class SemanticParserTest(unittest.TestCase):
         self.assertIn("strongly entailed generic product noun", observed["body"]["instructions"])
         self.assertEqual(observed["body"]["tool_choice"]["name"], SEMANTIC_TOOL_NAME)
         self.assertTrue(observed["body"]["tools"][0]["strict"])
-        self.assertEqual(observed["body"]["tools"][0]["parameters"]["properties"]["query_rewrites"]["minItems"], 1)
+        rewrite_schema = observed["body"]["tools"][0]["parameters"]["properties"][
+            "query_rewrites"
+        ]
+        self.assertEqual(rewrite_schema["minItems"], 1)
         self.assertIsInstance(observed["body"]["input"], str)
         self.assertNotIn("test-secret", json.dumps(observed["body"]))
 
@@ -179,7 +186,11 @@ class SemanticParserTest(unittest.TestCase):
 
             def interpret(self, message: str, context: str) -> SemanticInterpretation:
                 self.calls += 1
-                return SemanticInterpretation(query_rewrites=("cushioned shoes",), prompt_tokens=11, completion_tokens=7)
+                return SemanticInterpretation(
+                    query_rewrites=("cushioned shoes",),
+                    prompt_tokens=11,
+                    completion_tokens=7,
+                )
 
         provider = CountingProvider()
         parser = GatedSemanticParser(provider, max_calls=1, cache_size=2)
@@ -244,8 +255,18 @@ class SemanticParserTest(unittest.TestCase):
                 "query_rewrites": ["one", "two", "three"],
                 "subjective_needs": "comfortable",
                 "slot_hypotheses": [
-                    {"attribute": "feature", "value": "soft", "confidence": 0.8, "evidence": "comfortable"},
-                    {"attribute": "not_allowed", "value": "bad", "confidence": 1, "evidence": "comfortable"},
+                            {
+                                "attribute": "feature",
+                                "value": "soft",
+                                "confidence": 0.8,
+                                "evidence": "comfortable",
+                            },
+                            {
+                                "attribute": "not_allowed",
+                                "value": "bad",
+                                "confidence": 1,
+                                "evidence": "comfortable",
+                            },
                 ],
             }
         )
