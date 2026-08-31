@@ -21,7 +21,20 @@ Product logic is implemented in :class:`src.agent.ShoppingAgent`.
 
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
+
+# Ensure 'submission' package is always resolvable whether imported as
+# `submission.agent` or directly as `agent`.
+_pkg_root = Path(__file__).resolve().parent
+if "submission" not in sys.modules:
+    _mod = types.ModuleType("submission")
+    _mod.__path__ = [str(_pkg_root)]
+    _init_file = _pkg_root / "__init__.py"
+    if _init_file.exists():
+        _mod.__file__ = str(_init_file)
+    sys.modules["submission"] = _mod
 
 from submission.src.agent import ShoppingAgent
 
