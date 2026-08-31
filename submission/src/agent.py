@@ -238,6 +238,7 @@ class ShoppingAgent:
             "semantic_escalation": self.semantic_escalation.stats(),
             "semantic_provider": provider_stats() if callable(provider_stats) else {},
             "runtime": dict(self._runtime_metrics),
+            "catalog_cache": self.catalog.cache_diagnostics(),
             "final_ordering": {
                 "membership_preserving": self.config.membership_preserving_ordering,
                 "popularity_weight": self.config.ordering_popularity_weight,
@@ -245,6 +246,16 @@ class ShoppingAgent:
                 "phrase_rarity_weight": self.config.phrase_rarity_order_weight,
                 "popularity_during_override": (
                     self.config.ordering_popularity_during_override
+                ),
+            },
+            "retrieval": {
+                "structural_enabled": self.config.structural_retrieval_enabled,
+                "structural_focused_weight": self.config.structural_focused_weight,
+                "structural_exploratory_weight": (
+                    self.config.structural_exploratory_weight
+                ),
+                "structural_min_preference_phrases": (
+                    self.config.structural_min_preference_phrases
                 ),
             },
         }

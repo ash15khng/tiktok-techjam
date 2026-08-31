@@ -1,8 +1,8 @@
 """
 Load frozen JSONL products and expose read-only SQLite FTS5 search.
 
-The input file contains one product object per line. 
-``CatalogStore`` validates unique non-empty ``parent_asin`` values, 
+The input file contains one product object per line.
+``CatalogStore`` validates unique non-empty ``parent_asin`` values,
 normalizes missing fields to defaults, and builds only in-memory derived indexes;
 """
 
@@ -16,7 +16,12 @@ from pathlib import Path
 
 from submission.src.catalog.attributes import CatalogAttributeRegistry
 from submission.src.catalog.models import CatalogSearchResult, ProductRecord
-from submission.src.catalog.normalization import flatten_text, string_values, tokenize
+from submission.src.catalog.normalization import (
+    STOPWORDS,
+    flatten_text,
+    string_values,
+    tokenize,
+)
 from submission.src.catalog.structure import CatalogStructureIndex
 
 
@@ -29,6 +34,11 @@ CATEGORY_WEIGHTS = (0.0, 0.5, 8.0, 0.5, 0.5, 0.2, 0.2)
 CONSTRAINT_WEIGHTS = (0.0, 1.5, 0.8, 7.0, 6.0, 0.5, 3.0)
 CATALOG_INSERT_BATCH_SIZE = 1_000
 PRODUCT_TEXT_CACHE_SIZE = 4_096
+# Cached searches remove repeated category/title work across later turns and
+# common customer requests. Raising this improves reuse but retains more result
+# objects; lowering it reduces memory but repeats SQLite work. The 256-entry
+# setting produced 901 hits and 809 misses on the 200-session public replay.
+SEARCH_CACHE_SIZE = 256
 
 
 def _number(value: object) -> float | None:
@@ -45,6 +55,14 @@ class CatalogStore:
         self.catalog_path = Path(catalog_path)
         self.connection = sqlite3.connect(":memory:", check_same_thread=False)
         self.products: dict[str, ProductRecord] = {}
+        # Construct caches per store. Decorating these methods at class scope
+        # would share counters and retain old CatalogStore instances as keys.
+        self._search_cached = lru_cache(maxsize=SEARCH_CACHE_SIZE)(
+            self._search_uncached
+        )
+        self._product_token_view_cached = lru_cache(
+            maxsize=PRODUCT_TEXT_CACHE_SIZE
+        )(self._product_token_view_uncached)
         self._build()
         self.valid_ids = frozenset(self.products)
         self.attributes = CatalogAttributeRegistry(self.products)
@@ -180,9 +198,27 @@ class CatalogStore:
         unique = tuple(dict.fromkeys(token for token in terms if token))
         if not unique or limit <= 0:
             return []
+        return list(
+            self._search_cached(
+                unique,
+                tuple(float(value) for value in weights),
+                int(limit),
+                bool(require_all),
+            )
+        )
+
+    def _search_uncached(
+        self,
+        unique: tuple[str, ...],
+        weights: tuple[float, ...],
+        limit: int,
+        require_all: bool,
+    ) -> tuple[CatalogSearchResult, ...]:
+        """Execute one immutable FTS query and cache its ordered result."""
+
         operator = " AND " if require_all else " OR "
         expression = operator.join(f'"{term}"' for term in unique)
-        weight_sql = ", ".join(str(float(value)) for value in weights)
+        weight_sql = ", ".join(str(value) for value in weights)
         try:
             rows = self.connection.execute(
                 "SELECT parent_asin, "
@@ -192,8 +228,11 @@ class CatalogStore:
                 (expression, int(limit)),
             ).fetchall()
         except sqlite3.OperationalError:
-            return []
-        return [CatalogSearchResult(str(parent_asin), float(score)) for parent_asin, score in rows]
+            return ()
+        return tuple(
+            CatalogSearchResult(str(parent_asin), float(score))
+            for parent_asin, score in rows
+        )
 
     def structural_search(
         self,
@@ -213,19 +252,52 @@ class CatalogStore:
     def prepare_structure(self) -> CatalogStructureIndex:
         """Build the optional structural index once and return it.
 
-        The default five-route agent never pays this startup or memory cost.
-        Enabled configurations call this during agent construction so the first
+        Disabled configurations avoid this startup and memory cost. Enabled
+        configurations call this during agent construction so the first
         customer turn does not absorb lazy-index latency.
         """
 
         if self._structure is None:
-            self._structure = CatalogStructureIndex(self.products)
+            self._structure = CatalogStructureIndex(
+                self.products,
+                token_view=self.product_token_view,
+            )
         return self._structure
 
-    @lru_cache(maxsize=PRODUCT_TEXT_CACHE_SIZE)
-    def product_terms(self, parent_asin: str) -> frozenset[str]:
-        return frozenset(tokenize(self.products[parent_asin].search_text))
+    def product_token_view(self, parent_asin: str) -> tuple[str, frozenset[str]]:
+        """Return phrase and set views from one shared tokenization pass."""
 
-    @lru_cache(maxsize=PRODUCT_TEXT_CACHE_SIZE)
+        return self._product_token_view_cached(parent_asin)
+
+    def _product_token_view_uncached(
+        self,
+        parent_asin: str,
+    ) -> tuple[str, frozenset[str]]:
+        """Build normalized phrase and term views for one catalog product."""
+
+        all_tokens = tokenize(
+            self.products[parent_asin].search_text,
+            drop_stopwords=False,
+        )
+        terms = frozenset(
+            token
+            for token in all_tokens
+            if (len(token) > 1 or token.isdigit()) and token not in STOPWORDS
+        )
+        return " ".join(all_tokens), terms
+
+    def product_terms(self, parent_asin: str) -> frozenset[str]:
+        return self.product_token_view(parent_asin)[1]
+
     def product_token_text(self, parent_asin: str) -> str:
-        return " ".join(tokenize(self.products[parent_asin].search_text, drop_stopwords=False))
+        return self.product_token_view(parent_asin)[0]
+
+    def cache_diagnostics(self) -> dict[str, dict[str, int | None]]:
+        """Return aggregate cache counters without query or product content."""
+
+        return {
+            "search": self._search_cached.cache_info()._asdict(),
+            "product_token_view": (
+                self._product_token_view_cached.cache_info()._asdict()
+            ),
+        }

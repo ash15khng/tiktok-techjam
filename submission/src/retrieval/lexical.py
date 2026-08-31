@@ -27,10 +27,12 @@ class LexicalRetriever:
         active: ActiveState,
         plan: RetrievalPlan,
     ) -> dict[str, list[CatalogSearchResult]]:
-        """
-        parallel searches across five generator routes (Constraint Route, Field Route, Title Route, Category Route, Popularity Route) to produce candidate lists for each route.
+        """Return independent candidate routes for one active state.
 
-        search uses AND retrieval and fall back to OR only when the strict route is empty, to prevent exclusion due to missing attributes.
+        Constraint and category routes try strict AND retrieval first, then fall
+        back to recall-preserving OR when catalog metadata cannot satisfy every
+        term. The optional structural route is added only with category evidence
+        plus at least one positive preference phrase.
         """
 
         query_terms = active.query_terms()[: self.config.max_query_terms]
@@ -38,21 +40,21 @@ class LexicalRetriever:
         preference_terms = active.preference_terms()[: self.config.max_query_terms]
         focused_terms = self.store.rare_terms(preference_terms, self.config.max_focused_terms)
 
-        # constraint route generator
-        constraint = self.store.search( # strict AND search for all constraints
+        # Strict constraint retrieval is precise when metadata is complete.
+        constraint = self.store.search(
             focused_terms,
             weights=CONSTRAINT_WEIGHTS,
             limit=plan.generator_limit,
             require_all=True,
         )
-        if not constraint and focused_terms: # fallback to OR search if no strict matches found
+        if not constraint and focused_terms:
             constraint = self.store.search(
                 focused_terms,
                 weights=CONSTRAINT_WEIGHTS,
                 limit=plan.generator_limit,
             )
 
-        # searches by category_terms
+        # The larger category pool supplies both relevance and popularity routes.
         category_pool = self.store.search(
             category_terms,
             weights=CATEGORY_WEIGHTS,
@@ -66,7 +68,7 @@ class LexicalRetriever:
                 limit=max(plan.generator_limit, self.config.category_pool_depth),
             )
 
-        category_popular = sorted( # category_pool sorted by popularity, and cut back to generator limit
+        category_popular = sorted(
             category_pool,
             key=lambda result: (
                 -self.store.get(result.parent_asin).rating_number,
@@ -75,12 +77,12 @@ class LexicalRetriever:
             ),
         )[: plan.generator_limit]
         routes = {
-            "field": self.store.search( # search if query terms are in any field
+            "field": self.store.search(
                 query_terms,
                 weights=FIELD_WEIGHTS,
                 limit=plan.generator_limit,
             ),
-            "title": self.store.search( # search if category terms or query terms are in title
+            "title": self.store.search(
                 category_terms or query_terms,
                 weights=TITLE_WEIGHTS,
                 limit=plan.generator_limit,
@@ -89,7 +91,11 @@ class LexicalRetriever:
             "category_popular": category_popular,
             "constraint": constraint,
         }
-        if self.config.structural_retrieval_enabled:
+        if (
+            self.config.structural_retrieval_enabled
+            and len(active.preference_phrases)
+            >= self.config.structural_min_preference_phrases
+        ):
             routes["structural"] = self.store.structural_search(
                 tuple(active.category_phrases),
                 tuple(active.preference_phrases),

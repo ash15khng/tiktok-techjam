@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from functools import lru_cache
+from typing import Callable
 
 from submission.src.catalog.models import CatalogSearchResult, ProductRecord
-from submission.src.catalog.normalization import normalize_text, tokenize
+from submission.src.catalog.normalization import tokenize
 
 
 GENERIC_CATEGORY_KEYS = frozenset(
@@ -23,7 +23,6 @@ GENERIC_CATEGORY_KEYS = frozenset(
         "clothing shoes jewelry",
     }
 )
-STRUCTURAL_TEXT_CACHE_SIZE = 4_096
 
 
 def _token_text(value: str) -> str:
@@ -47,13 +46,19 @@ def _category_key(categories: tuple[str, ...]) -> str:
 class CatalogStructureIndex:
     """Resolve conservative category buckets and rank their members.
 
-    The index stores each catalog ID once in a category bucket. Product text is
-    normalized lazily through a bounded cache, avoiding the large eager
-    attribute-postings structures used by some structural retrieval systems.
+    The index stores each catalog ID once in a category bucket. The production
+    store supplies its bounded shared token cache, avoiding a second normalized
+    copy and the much larger eager attribute-postings alternative.
     """
 
-    def __init__(self, products: dict[str, ProductRecord]) -> None:
+    def __init__(
+        self,
+        products: dict[str, ProductRecord],
+        *,
+        token_view: Callable[[str], tuple[str, frozenset[str]]] | None = None,
+    ) -> None:
         self.products = products
+        self._token_view = token_view or self._default_token_view
         buckets: dict[str, list[str]] = defaultdict(list)
         for product in products.values():
             key = _category_key(product.categories)
@@ -116,8 +121,7 @@ class CatalogStructureIndex:
 
         ranked: list[tuple[int, float, float, str]] = []
         for parent_asin in members:
-            product_text = self._product_token_text(parent_asin)
-            product_terms = self._product_terms(parent_asin)
+            product_text, product_terms = self._token_view(parent_asin)
             exact_count = sum(phrase in product_text for phrase in phrases)
             coverage = len(all_terms & product_terms) / denominator
             product = self.products[parent_asin]
@@ -185,11 +189,11 @@ class CatalogStructureIndex:
             )
         )
 
-    @lru_cache(maxsize=STRUCTURAL_TEXT_CACHE_SIZE)
-    def _product_token_text(self, parent_asin: str) -> str:
-        return _token_text(self.products[parent_asin].search_text)
+    def _default_token_view(self, parent_asin: str) -> tuple[str, frozenset[str]]:
+        """Return a standalone view when no store cache is supplied."""
 
-    @lru_cache(maxsize=STRUCTURAL_TEXT_CACHE_SIZE)
-    def _product_terms(self, parent_asin: str) -> frozenset[str]:
-        return frozenset(tokenize(self.products[parent_asin].search_text))
-
+        product = self.products[parent_asin]
+        return (
+            _token_text(product.search_text),
+            frozenset(tokenize(product.search_text)),
+        )

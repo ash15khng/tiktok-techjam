@@ -67,7 +67,10 @@ class LexicalRetrieverTest(unittest.TestCase):
         )
         plan = RetrievalPlan(focus_score=0.8, generator_weights={}, generator_limit=2)
 
-        disabled = LexicalRetriever(_Store(), AgentConfig()).retrieve(active, plan)
+        disabled = LexicalRetriever(
+            _Store(),
+            AgentConfig(structural_retrieval_enabled=False),
+        ).retrieve(active, plan)
         enabled = LexicalRetriever(
             _Store(),
             AgentConfig(structural_retrieval_enabled=True),
@@ -78,6 +81,17 @@ class LexicalRetrieverTest(unittest.TestCase):
             [item.parent_asin for item in enabled["structural"]],
             ["HIGH"],
         )
+
+    def test_structural_route_waits_for_discriminating_preference(self) -> None:
+        active = ActiveState(category_phrases=["fashion sneakers"])
+        plan = RetrievalPlan(focus_score=0.2, generator_weights={}, generator_limit=2)
+
+        routes = LexicalRetriever(
+            _Store(),
+            AgentConfig(structural_retrieval_enabled=True),
+        ).retrieve(active, plan)
+
+        self.assertNotIn("structural", routes)
 
 
 if __name__ == "__main__":
