@@ -1,11 +1,11 @@
-# Shopping Copilot
+# ShopScout
 
 A conversational shopping agent built for the TechJam 2026 Conversational
 E-Commerce Search Challenge.
 
 ## Project Overview
 
-Shopping Copilot is an offline-first conversational agent that finds a
+ShopScout is an offline-first conversational agent that finds a
 customer's hidden target product within 10 conversational turns. Given an
 anonymized customer profile and a short message, it asks at most one useful
 clarification per turn and returns a ranked Top 10 of catalog products.
@@ -15,7 +15,7 @@ SQLite FTS5, no model calls, $0 cost) with an optional, strictly gated LLM
 adapter for harder natural-language cases. On the 200-session public
 evaluator it scores:
 
-| Metric | Baseline starter | Shopping Copilot |
+| Metric | Baseline starter | ShopScout |
 |---|---:|---:|
 | Hit Rate@10 | 0.125 | **0.995** |
 | MRR | 0.068 | **0.668** |
@@ -27,6 +27,12 @@ structured intent → a state reducer updates conversation memory → five
 lexical retrieval routes are fused (Reciprocal Rank Fusion) → candidates are
 reranked on term coverage, exact phrase, popularity, and budget fit → a
 value-driven policy decides whether to ask a clarifying question.
+
+## Key Differentiators & Technical Accomplishments
+
+- **Zero-Cost Deterministic Core:** Achieves a **0.871 TechnicalScore** and **0.995 Hit Rate@10** using a 100% Python standard library + SQLite FTS5 pipeline running in ~27ms per turn with $0 default API spend.
+- **Atomic State Overrides:** Models conversation memory as a stream of granular operations (`add`, `replace`, `exclude`) to handle mid-conversation preference reversals without erasing unaffected context.
+- **Value-Gated Clarifications:** Combines entropy estimation and historical priors to ask at most one clarifying question per turn only when it meaningfully compresses the search space, cutting MTTC to **2.34 turns**.
 
 ## Setup and Installation
 
@@ -90,9 +96,3 @@ streamlit_app.py`) to chat with the agent turn by turn in a browser.
 - **With more time**, we would: live-validate the semantic adapter end to
   end, explore a lightweight cross-encoder reranker gated behind measured
   recall gains, and expand the hard-language regression suite.
-
-## Team Member Contributions
-
-*To be completed — add each member's name and their area of contribution
-(e.g. retrieval/ranking, dialog state, evaluation, UI/demo) before final
-submission.*
