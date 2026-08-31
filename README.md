@@ -79,7 +79,7 @@ organizer-facing entry point is `submission.agent.Agent`;
 `starter/agent.py` is only a compatibility shim for the provided evaluator.
 
 To try it interactively, run the included Streamlit UI (`streamlit run
-streamlit_app.py`) to chat with the agent turn by turn in a browser.
+app.py`) to chat with the agent turn by turn in a browser.
 
 ## Limitations and Future Improvements
 
