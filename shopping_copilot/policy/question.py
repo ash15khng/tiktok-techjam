@@ -131,10 +131,10 @@ class QuestionPolicy:
 
         # If gain is negligible, fall back to generalized domain attribute priority
         if best_gain < 0.05:
-            # Check user profile or category context for smarter fallback
+            # Domain attribute priority tailored for apparel/fashion/shopping
             priority_order = (
-                "material", "color", "style", "feature", "budget",
-                "use_case", "size", "brand", "other",
+                "material", "feature", "style", "color", "brand",
+                "use_case", "size", "budget", "other",
             )
             for fallback_candidate in priority_order:
                 if fallback_candidate in eligible:

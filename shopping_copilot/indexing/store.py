@@ -159,6 +159,7 @@ class CatalogIndex:
         query_terms: Sequence[str] | str,
         limit: int = 50,
         weights: tuple[float, ...] | None = None,
+        column: str | None = None,
     ) -> list[tuple[str, float]]:
         """Executes field-weighted BM25 lexical search using SQLite FTS5."""
         if not self._is_indexed or self._total_docs == 0:
@@ -173,8 +174,13 @@ class CatalogIndex:
         if not pruned:
             return []
 
-        fts_query = " OR ".join(f'"{t}"' for t in pruned)
-        w = weights or DEFAULT_BM25_FIELD_WEIGHTS
+        if column:
+            fts_query = f"{column}: (" + " OR ".join(f'"{t}"' for t in pruned) + ")"
+            w = weights or (0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        else:
+            fts_query = " OR ".join(f'"{t}"' for t in pruned)
+            w = weights or DEFAULT_BM25_FIELD_WEIGHTS
+
         sql = (
             f"SELECT parent_asin, -bm25(products, {w[0]}, {w[1]}, {w[2]}, {w[3]}, {w[4]}, {w[5]}, {w[6]}) AS score "
             f"FROM products WHERE products MATCH ? ORDER BY score DESC LIMIT ?"

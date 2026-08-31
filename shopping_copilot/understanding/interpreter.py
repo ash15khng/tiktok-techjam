@@ -79,6 +79,15 @@ class MessageInterpreter:
                 parse_confidence=1.0,
             )
 
+        # Handle simulator guidance / meta-prompt
+        if re.search(r"\b(?:those options are not quite right|ask me about one specific attribute)\b", raw_message, re.IGNORECASE):
+            return IntentFrame(
+                dialogue_acts=("clarify",),
+                slot_updates=(),
+                product_terms=(),
+                parse_confidence=1.0,
+            )
+
         dialogue_acts = detect_dialogue_acts(raw_message)
         slot_updates: list[SlotUpdate] = []
         ambiguities: list[InterpretationAmbiguity] = []
@@ -114,6 +123,14 @@ class MessageInterpreter:
                     source_turn=turn,
                 )
             )
+            # If the message is a pure indifference declaration without contrastive conjunctions, return immediately
+            if not re.search(r"\b(?:but|however|instead|except|except for|only)\b", raw_message, re.IGNORECASE):
+                return IntentFrame(
+                    dialogue_acts=tuple(dialogue_acts),
+                    slot_updates=tuple(slot_updates),
+                    product_terms=(),
+                    parse_confidence=1.0,
+                )
 
         # -------------------------------------------------------------------
         # Step 1.5: Coarse Category Intent Pattern ("I'm looking for <CATEGORY>")
@@ -204,8 +221,13 @@ class MessageInterpreter:
         alt_group_id = "alt_grp_1" if has_or else None
 
         for attr, canonical_val, raw_span, char_span in trie_matches:
-            # Check if inside a structured prefix already handled (do not block coarse category)
-            if any(s.provenance == "structured_prefix" and s.char_span[0] <= char_span[0] and char_span[1] <= s.char_span[1] for s in slot_updates):
+            # Check if inside a structured prefix or coarse category already handled
+            if any(
+                s.provenance in ("structured_prefix", "coarse_category")
+                and s.char_span[0] <= char_span[0]
+                and char_span[1] <= s.char_span[1]
+                for s in slot_updates
+            ):
                 continue
 
             # Check if within negation scope

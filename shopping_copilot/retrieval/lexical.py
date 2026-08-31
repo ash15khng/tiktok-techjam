@@ -31,6 +31,10 @@ CONVERSATIONAL_STOPWORDS = frozenset([
     "needed", "needs", "prefer", "preferred", "preference", "preferences", "options", "quite", "right",
     "yet", "specific", "attribute", "attributes", "additional", "exploring", "explore", "judgment",
     "matters", "matter", "something", "anything", "please", "item", "items", "product", "products",
+    # Catalog metadata labels & units
+    "package", "packages", "dimension", "dimensions", "inches", "inch", "pounds", "pound", "ounces",
+    "ounce", "grams", "gram", "approx", "approximately", "measures", "measure", "department",
+    "model", "number", "date", "first", "available", "asin", "manufacturer", "origin", "import", "imported",
 ])
 
 
@@ -74,9 +78,7 @@ class TitleFTSGenerator:
         if not terms:
             return []
 
-        # Weights: parent_asin=0, title=10, others=0
-        title_weights = (0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        return self.catalog_index.search_bm25(terms, limit=limit, weights=title_weights)
+        return self.catalog_index.search_bm25(terms, limit=limit, column="title")
 
 
 class FieldWeightedFTSGenerator:

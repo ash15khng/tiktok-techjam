@@ -319,6 +319,9 @@ COMMON_EXCLUDED_ALIASES = frozenset([
     "store", "shop", "item", "items", "product", "products", "online", "outlet", "official",
     "brand", "brands", "style", "color", "material", "size", "feature", "category",
     "accessories", "clothing", "shoes", "jewelry", "apparel", "men", "women", "kids", "boys", "girls",
+    "sole", "key", "work", "looking", "need", "prefer", "requirement", "options", "right", "specific",
+    "quality", "design", "good", "great", "best", "like", "matter", "matters", "well", "all", "soft",
+    "measures", "approximately", "long", "free", "pure", "true", "plus", "new", "original",
 ])
 
 VALID_SINGLE_LETTER_SIZES = frozenset(["s", "m", "l", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])

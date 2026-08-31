@@ -21,7 +21,13 @@ BUDGET_RANGE_RE = re.compile(
 )
 
 BUDGET_APPROX_RE = re.compile(
-    r"\b(?:around|about|roughly|approx(?:\.|imately)?|~|budget\s+around)\s*\$?(\d+(?:\.\d+)?)(?!\.\d)",
+    r"\b(?:budget\s+(?:is\s+|around\s+|about\s+|approx(?:\.|imately)?\s+|of\s+)?\$(\d+(?:\.\d+)?)"
+    r"|budget\s+around\s+\$?(\d+(?:\.\d+)?)"
+    r"|around\s+\$(\d+(?:\.\d+)?)"
+    r"|about\s+\$(\d+(?:\.\d+)?)"
+    r"|approx(?:\.|imately)?\s+\$(\d+(?:\.\d+)?)"
+    r"|price\s+(?:is\s+|around\s+|about\s+|of\s+)?\$?(\d+(?:\.\d+)?)"
+    r"|~\s*\$(\d+(?:\.\d+)?))(?!\.\d)",
     re.IGNORECASE,
 )
 
@@ -72,8 +78,9 @@ OVERRIDE_RE = re.compile(
 )
 
 INDIFFERENCE_RE = re.compile(
-    r"\b(?:no\s+preference|don'?t\s+have\s+(?:a|any)\s+preference|don'?t\s+care|doesn'?t\s+matter|"
-    r"either\s+is\s+fine|any\s+is\s+fine|use\s+your\s+judge?ment|no\s+additional\s+preference|anything\s+works)\b",
+    r"\b(?:no\s+(?:additional\s+)?preference|don'?t\s+have\s+(?:an?\s+)?(?:additional\s+)?preference|"
+    r"don'?t\s+care|doesn'?t\s+matter|either\s+is\s+fine|any\s+is\s+fine|"
+    r"use\s+your\s+judge?ment|anything\s+works|not\s+particular|no\s+requirement)\b",
     re.IGNORECASE,
 )
 
@@ -153,7 +160,10 @@ def extract_budget_slots(
 
     # 2. Approximate budget (e.g. "budget around $50")
     for match in BUDGET_APPROX_RE.finditer(text):
-        base_val = float(match.group(1))
+        val_str = next((g for g in match.groups() if g is not None), None)
+        if not val_str:
+            continue
+        base_val = float(val_str)
         tol = base_val * config.budget_tolerance_ratio
         val_low = str(round(max(0.0, base_val - tol), 2))
         val_high = str(round(base_val + tol, 2))

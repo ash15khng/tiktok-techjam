@@ -87,11 +87,8 @@ def evaluate_constraint(
     if prod_values and any(_matches_any_value(v, prod_values) for v in constraint.values):
         return "match"
 
-    # Check search fields (title, features, details) lazily
-    title_lower = record.search_fields.get("title", "").lower()
-    features_lower = record.search_fields.get("features", "").lower()
-    details_lower = record.search_fields.get("details", "").lower()
-    all_text = f"{title_lower} {features_lower} {details_lower}"
+    # Check all search fields lazily
+    all_text = " ".join(record.search_fields.values()).lower()
 
     for v in constraint.values:
         v_clean = v.lower().strip()
