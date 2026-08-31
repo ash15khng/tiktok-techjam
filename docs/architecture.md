@@ -38,7 +38,8 @@ submission/
     |   |-- attributes.py            Catalog-derived attribute registry
     |   |-- models.py                Normalized product records
     |   |-- normalization.py         Unicode/text normalization
-    |   `-- store.py                 Product map and in-memory SQLite FTS5
+    |   |-- store.py                 Product map, SQLite FTS5, bounded caches
+    |   `-- structure.py             Compact catalog-category candidate route
     |-- understanding/
     |   |-- models.py                IntentFrame and SlotUpdate
     |   |-- contextual.py            Short-answer resolution
@@ -54,7 +55,7 @@ submission/
     |-- retrieval/
     |   |-- models.py                Plan, evidence, and assessment types
     |   |-- planner.py               Focused/exploratory route blend
-    |   |-- lexical.py               Five candidate generators
+    |   |-- lexical.py               Five FTS + gated structural generator
     |   `-- fusion.py                Weighted RRF and overlap assessment
     `-- ranking/
         |-- budget.py                Three-valued price evidence
@@ -85,7 +86,7 @@ flowchart TD
     F[StateReducer]
     F --> G[Current ActiveState]
     G --> H[RetrievalPlanner]
-    H --> I[Five lexical candidate lists]
+    H --> I[Five FTS lists + gated structural list]
     I --> J[Weighted Reciprocal Rank Fusion]
     J --> K[RetrievalAssessment]
     J --> L[LightweightReranker]
@@ -207,7 +208,8 @@ route_weight = focus_score * focused_weight
              + (1 - focus_score) * exploratory_weight
 ```
 
-All five inexpensive generators run on every turn:
+Five inexpensive FTS generators run on every turn. A sixth structural generator
+joins only when at least one positive preference phrase exists:
 
 | Generator | Evidence and behavior |
 |---|---|
@@ -216,11 +218,26 @@ All five inexpensive generators run on every turn:
 | `category` | AND category pool, then OR only if strict retrieval is empty |
 | `category_popular` | Same category pool reordered by rating count |
 | `constraint` | Rarest preference terms with AND, then safe OR fallback |
+| `structural` | Safely resolved catalog-category bucket ranked by exact positive phrase coverage, token coverage, then popularity |
 
 Each primary list is bounded at 160. The shared category pool and final rerank
 depth are 800. Raising these depths can improve long-tail recall but costs more
 SQLite and reranking time; a depth-320 rerank was measured and did not recover
 the useful deeper candidates.
+
+`CatalogStructureIndex` is derived only from frozen product categories. It uses
+the two most-specific non-generic category segments and accepts exact,
+containment, or exact-suffix resolution. An unresolved category yields an empty
+route rather than a guessed filter. Its RRF weights interpolate with focus:
+`0.80` focused and `0.50` exploratory. An earlier ungated `1.20/0.90`
+configuration improved hit timing but reduced working-fold MRR to `0.576017`;
+requiring one preference phrase retained precision.
+
+Product phrase/set views are tokenized once and held in a per-agent 4,096-entry
+LRU. Immutable FTS results use a separate 256-entry per-agent LRU. Raising either
+bound improves repeated-query reuse but retains more objects; lowering them saves
+memory and repeats normalization or SQLite work. The full public replay observed
+901 search-cache hits and 809 misses at the retained search bound.
 
 ## 8. Fusion and retrieval assessment
 
@@ -379,21 +396,21 @@ python -m tests.stress.hard_evaluator
 python -m evaluator.local_evaluator
 ```
 
-The final full-public compatibility replay scored Hit Rate `0.990`, MRR
-`0.657026`, MTTC `2.550`, Efficiency `0.845`, and TechnicalScore `0.861108`,
-with the model disabled and zero tokens. Relative to the preceding generalized
-checkpoint, Top-10 membership and first-hit turns are unchanged while MRR rises
-by `0.039794`. This is public-development evidence, not a private-set estimate.
+The final full-public compatibility replay scored Hit Rate `0.995`, MRR
+`0.667556`, MTTC `2.335`, Efficiency `0.8665`, and TechnicalScore `0.871067`,
+with the model disabled and zero tokens. Relative to the preceding checkpoint,
+one hit was gained, no hit was lost, and target ranks improved overall. This is
+public-development evidence, not a private-set estimate.
 
 ## 14. Operational characteristics
 
 The standard-library-only offline path needs no GPU, model download, SDK, or
-external vector database. The latest local 40-first-turn audit measured 8.07 s
-catalog startup, 272 ms mean response, 312 ms p95, and 325 ms maximum, with a
-347 MiB peak working set. A paired ordering toggle showed no meaningful mean or
-maximum latency change; its approximately 8 ms p95 difference is within a noisy
-single-machine audit. These are Windows development measurements, not guarantees
-for the organizer machine.
+external vector database. The retained local audit measured 9.35 seconds
+startup, 27.61 ms repeated-request mean, 51.03 ms repeated p95, a 483.15 ms
+uncached first-turn maximum, and 359.90 MiB working set. A complete public replay
+took 90.26 seconds after 9.80 seconds startup. These are Windows development
+measurements, not guarantees for the organizer machine. See
+`docs/differentiation.md` for methodology and comparative trade-offs.
 
 ## 15. Ownership map for five collaborators
 

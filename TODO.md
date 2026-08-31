@@ -4,10 +4,10 @@
 
 1. Measure target recall at depths 10, 50, 100, 160, and the complete candidate
    union for each retained route. Report marginal recall, not only final score.
-2. Design a genuinely complementary long-tail generator. Do not re-add the
-   rejected typed-attribute route or tune directly to a missed ASIN.
-3. Improve first-turn MRR beyond the retained `0.669479` working-fold result
-   without regressing Hit Rate `0.9875`, MTTC `2.58125`, or any scenario without
+2. Measure whether a compact semantic generator adds recall beyond the retained
+   structural route. Do not tune directly to the remaining missed ASIN.
+3. Improve MRR beyond the retained `0.677517` working-fold result
+   without regressing Hit Rate `0.99375`, MTTC `2.35625`, or any scenario without
    an explicit tradeoff.
 4. Tune route weights, rerank weights, popularity cap, question threshold, and
    candidate depth only through the four working folds.
@@ -21,11 +21,12 @@
    corrections. Keep all targets outside the public 200.
 9. Record pre/post candidate ranks and accepted hints per semantic call without
    storing credentials or raw provider responses.
-10. Grow the current 92-test suite to at least 100 parser utterances, especially
+10. Grow the current 98-test suite to at least 100 parser utterances, especially
    conjunction scope, short sizes, brand aliases, typos, and contextual replies
    that explicitly switch attributes.
-11. Reduce catalog-registry cold start and rerun latency/memory on the judging
-   environment. Do not reduce candidate depth without a recall ablation.
+11. Reduce catalog-registry and structural-index cold start, then rerun
+   latency/memory on the judging environment. Do not reduce candidate depth or
+   cache bounds without a recall and memory ablation.
 12. Rehearse the release from a clean checkout and verify catalog checksum,
    environment setup, startup time, evaluator output, and credential hygiene.
 13. Add the five members' contribution statements and rehearse the prepared
@@ -54,7 +55,8 @@ target-disjoint evidence:
 - candidate-viable clarification filtering needs explicit match/contradiction/
   unknown evidence before it can safely discard a question;
 - dense retrieval should be adopted only if it adds candidate recall beyond the
-  five lexical routes within startup, memory, and response-latency budgets; and
+  five lexical plus structural routes within startup, memory, and
+  response-latency budgets; and
 - an expected-value action policy needs target-disjoint conversation simulation
   before it replaces the current ask-and-recommend rule.
 

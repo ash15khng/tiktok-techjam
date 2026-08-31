@@ -5,14 +5,14 @@ read public labels, evaluator helpers, hidden intent cards, or ground truth.
 
 ## Results
 
-The current generalized code was replayed on all 200 public sessions after the
+The pre-structural generalized code was replayed on all 200 public sessions after the
 package/configuration refactor. It scored Hit Rate `0.990`, MRR `0.617232`, MTTC
 `2.550`, and TechnicalScore `0.849170`. A replay of the immediate parent commit
 produced the same aggregate metrics and zero session-level hit-turn/rank
 differences. The table below is the historical experiment trail; its peak is not
 the current submission result.
 
-Current generalized scenario results:
+Pre-structural generalized scenario results:
 
 | Scenario | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|
@@ -366,7 +366,56 @@ prefers the last successful recommendations before fresh FTS and global guard
 fill. Aggregate diagnostics expose cache, late-turn, and fallback counts without
 recording messages, profiles, credentials, or product IDs.
 
-The latest 40-turn Windows audit measured 8.07 seconds startup, 272 ms mean,
+The preceding 40-turn Windows audit measured 8.07 seconds startup, 272 ms mean,
 312 ms p95, and 325 ms maximum response latency. Peak working set was 347 MiB.
 A paired ordering toggle had similar mean and maximum latency; the observed
 approximately 8 ms p95 difference requires repetition before attribution.
+
+## Evidence-gated structural retrieval and resource pass
+
+The five-route FTS ensemble remained the fallback and source of broad recall. A
+sixth route now derives compact product-family buckets from the two
+most-specific non-generic catalog category segments, then ranks a safely
+resolved bucket by complete positive phrase matches, token coverage, and
+log-scaled popularity. It reads no labels or evaluator state and never rejects a
+product because metadata is absent.
+
+The first structural setting was too influential:
+
+| Working-fold variant | Hit Rate | MRR | MTTC | Score | Decision |
+|---|---:|---:|---:|---:|---|
+| Pre-structural reference | 0.987500 | 0.669479 | 2.581250 | 0.862969 | Reference |
+| Ungated, weight 1.20/0.90 | 0.993750 | 0.576017 | 1.975000 | 0.850180 | Reject: rank collapse |
+| Gated, weight 0.30/0.20 | 0.987500 | 0.685585 | 2.556250 | 0.868301 | Useful but lower recall |
+| Gated, weight 0.50/0.35 | 0.993750 | 0.679100 | 2.468750 | 0.871230 | Useful |
+| Gated, weight 0.80/0.50 | 0.993750 | 0.677517 | 2.356250 | 0.873005 | Retain |
+
+The gate requires one disclosed positive preference phrase. This prevents
+category popularity from affecting vague Browsing openings while still helping
+once the customer supplies discriminating evidence. Against the preceding
+working checkpoint, the retained variant gained one hit, lost none, moved 19
+hits earlier and one later, improved 35 target ranks, and worsened 16. The
+frozen 14-case language suite was exactly unchanged at Hit Rate `0.857143`, MRR
+`0.741071`, and MTTC `1.357143`.
+
+The complete public replay moved Hit Rate from `0.990` to `0.995`, MRR from
+`0.657026` to `0.667556`, MTTC from `2.550` to `2.335`, and TechnicalScore from
+`0.861108` to `0.871067`. This is public compatibility evidence, not a private
+estimate.
+
+Profiling showed duplicate product tokenization in the structural and reranking
+paths and repeated immutable SQLite queries across turns. The retained runtime
+shares one 4,096-entry product token-view cache and adds a 256-entry FTS result
+cache, both per `CatalogStore`. The full replay recorded 421,465 token-view hits
+and 100,657 misses, plus 901 search hits and 809 misses. The latter changes no
+ordering: every per-session hit, turn, and rank result was identical before and
+after search caching. The hard-language suite recorded zero search-cache hits
+and 70 misses, confirming that its unchanged result does not come from repeated
+query reuse.
+
+A 40-request audit with two repeated request shapes measured 9.35 seconds
+startup, 27.61 ms mean, 51.03 ms p95, 483.15 ms first uncached maximum, and
+359.90 MiB working set. A full replay took 90.26 seconds after 9.80 seconds
+startup. These warm/cache-sensitive figures replace neither cold-turn profiling
+nor judging-host measurement. Comparative strengths and weaknesses are kept in
+[differentiation.md](differentiation.md).

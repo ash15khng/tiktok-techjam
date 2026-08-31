@@ -72,18 +72,18 @@ working sessions:
 
 | Metric | Result |
 |---|---:|
-| Hit Rate@10 | 0.987500 |
-| MRR | 0.669479 |
-| MTTC | 2.581250 |
-| Efficiency | 0.841875 |
-| TechnicalScore | 0.862969 |
+| Hit Rate@10 | 0.993750 |
+| MRR | 0.677517 |
+| MTTC | 2.356250 |
+| Efficiency | 0.864375 |
+| TechnicalScore | 0.873005 |
 
 The 40-session partition was protected during the initial re-engineering pass,
 then opened for a full-public compatibility replay. Later ordering work selected
 its weight only on the 160 working sessions and used the full 200 only for final
 reporting, but the earlier exposure means the partition is not statistically
 independent. The organizer's 800 private sessions remain the actual test. The
-current full-public compatibility score is `0.861108`.
+current full-public compatibility score is `0.871067`.
 
 ## Acceptance gates
 

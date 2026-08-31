@@ -12,6 +12,7 @@ Find the exact hidden catalog `parent_asin` in the Top 10, at the highest rank a
     -> validate non-empty unique ASINs while loading
     -> normalized searchable views without inventing missing values
     -> product map + SQLite FTS5 + vocabulary frequencies
+    -> compact most-specific category buckets + bounded per-agent caches
     -> catalog-derived attribute values + answerability priors
     -> log-quantile price bands; missing price remains unknown
 
@@ -29,6 +30,7 @@ respond(message)
     -> StateReducer creates current ActiveState
     -> sigmoid focus score from current category/constraint evidence
     -> title/field BM25 + category relevance/popularity + constraint retrieval
+    -> catalog-structural route only after positive preference evidence
     -> weighted Reciprocal Rank Fusion
     -> generator overlap and Top-10 stability assessment
     -> full-union lightweight reranking
@@ -52,6 +54,7 @@ respond(message)
 | Attributes and short replies | Fixed API schema, catalog-derived value registry; explicit evidence first; immediate question context second |
 | Lexical retrieval | SQLite FTS5 BM25 with field weights |
 | Broad-category coverage | Shared 800-item category pool, ranked separately by BM25 and rating count |
+| Structural retrieval | Exact/contained/suffix category resolution; phrase coverage, token coverage, then popularity |
 | Route control | Heuristic `focus_score`; all cheap generators still run |
 | Retrieval confidence | Pairwise generator Top-20 Jaccard converted to Top-10 stability |
 | Fusion | Weighted Reciprocal Rank Fusion, `k=60` |
@@ -92,7 +95,7 @@ Unimplemented alternatives are listed only in [`../TODO.md`](../TODO.md).
 
 1. `CatalogStore` and `ResponseGuard` provide the reliable contract path.
 2. Deterministic interpretation and Active State preserve current intent.
-3. Five lexical rank lists feed weighted RRF.
+3. Five lexical rank lists plus one evidence-gated structural list feed weighted RRF.
 4. Full-union reranking and exposure control order the final candidates.
 5. A membership-preserving orderer improves rank without delaying target hits.
 6. Adaptive specific questions and one broad recovery guide later turns.
@@ -100,8 +103,8 @@ Unimplemented alternatives are listed only in [`../TODO.md`](../TODO.md).
 A separate typed-attribute candidate route and positive structured reranker were
 tested on the four development folds and rejected. They duplicated existing
 constraint evidence, lowered the score, and increased latency. The retained
-system already fuses five independently weighted candidate lists before a
-feature-based reranker.
+system retains those five independently weighted lists before adding the
+different catalog-family signal and feature-based reranker.
 
 Remaining work and alternative implementations are centralized in
 [`../TODO.md`](../TODO.md).
@@ -121,5 +124,10 @@ partition was later included in the final compatibility replay. See
 [evaluation-methodology.md](evaluation-methodology.md).
 
 Published starter: Hit Rate@10 `0.125`, MRR `0.068034`, MTTC `9.81`.
+
+Current public compatibility replay: Hit Rate@10 `0.995`, MRR `0.667556`,
+MTTC `2.335`, and TechnicalScore `0.871067`, with zero model tokens. Comparative
+latency, memory, cost, and score trade-offs are in
+[differentiation.md](differentiation.md).
 
 See [architecture.md](architecture.md) for formulas, contracts, module paths, thresholds, tests, ownership, fallbacks, and ablations.

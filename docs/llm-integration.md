@@ -185,8 +185,9 @@ disabled or incomplete, so no HTTP request, tokens, or cost occurred.
 
 The LLM improves semantic matching through query expansion: language such as
 “walking on pillows” can become catalog terms such as “cushioned” or “memory
-foam.” Those terms enter the same five candidate generators and the bounded
-reranker’s IDF-coverage score. This is semantic assistance, but not a neural
+foam.” Those terms enter the five FTS generators, the structural generator when
+its category/evidence gate resolves, and the bounded reranker’s IDF-coverage
+score. This is semantic assistance, but not a neural
 query-product cross-encoder.
 
 A cross-encoder or listwise LLM reranker is not in the default runtime.

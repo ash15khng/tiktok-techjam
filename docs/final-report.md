@@ -12,16 +12,16 @@ Complete-public development results from the unmodified evaluator:
 
 | Metric | Starter | Current code | Earlier reference |
 |---|---:|---:|---:|
-| Hit Rate@10 | 0.125 | 0.990 | 0.995 |
-| MRR | 0.068 | 0.657026 | 0.635746 |
-| MTTC | 9.81 | 2.550 | 2.245 |
-| TechnicalScore | 0.106710 | 0.861108 | 0.863324 |
+| Hit Rate@10 | 0.125 | 0.995 | 0.990 |
+| MRR | 0.068 | 0.667556 | 0.657026 |
+| MTTC | 9.81 | 2.335 | 2.550 |
+| TechnicalScore | 0.106710 | 0.871067 | 0.861108 |
 
-The retained ordering pass leaves Top-10 membership and first-hit turns unchanged
-from the preceding generalized checkpoint while improving MRR by `0.039794`.
+The retained structural route gains one public hit, moves the first hit earlier,
+and improves MRR relative to the preceding generalized checkpoint.
 Neither result estimates the 800 private sessions. Numeric selection used four
 scenario-stratified, target/title-family-disjoint working folds. Their current
-160-session score is `0.862969`. A fifth public partition had already been opened
+160-session score is `0.873005`. A fifth public partition had already been opened
 in an earlier compatibility replay, so it is not described as an independent
 holdout for this later work.
 
@@ -29,10 +29,10 @@ Current full-public scenario breakdown:
 
 | Scenario | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|
-| Buying | 0.987500 | 0.653780 | 1.925000 |
-| Browsing | 1.000000 | 0.623943 | 2.512500 |
-| Intent Override | 0.966667 | 0.661799 | 4.266667 |
-| Boundary | 1.000000 | 0.933333 | 2.700000 |
+| Buying | 1.000000 | 0.650585 | 1.525000 |
+| Browsing | 1.000000 | 0.654315 | 2.487500 |
+| Intent Override | 0.966667 | 0.659524 | 4.000000 |
+| Boundary | 1.000000 | 0.933333 | 2.600000 |
 
 ## Implemented product
 
@@ -54,7 +54,8 @@ Current full-public scenario breakdown:
 5. Active State stores only currently valid session evidence; the anonymized
    profile is a capped soft prior.
 6. Five lexical rank lists cover field relevance, title relevance, focused
-   constraints, category relevance, and category-conditioned popularity.
+   constraints, category relevance, and category-conditioned popularity. A
+   sixth catalog-structural list joins only after positive preference evidence.
 7. Weighted Reciprocal Rank Fusion creates a bounded union. The full union is
    reranked by RRF support, IDF coverage, exact phrase coverage, capped rating
    volume, profile overlap, exclusions, and missing-neutral price bounds.
@@ -112,19 +113,19 @@ completed responses. The subsequent forced function-tool contract is mocked but
 not live-validated.
 
 The original pre-registry Windows audit measured 2.45 s startup and 265 ms p95.
-The current 40-request first-turn audit measured:
+The current 40-request audit with two repeated request shapes measured:
 
-- catalog startup: 8.07 s;
-- mean response: 272 ms;
-- p95 response: 312 ms;
-- maximum response: 325 ms;
-- peak working set: 347 MiB.
+- catalog startup: 9.35 s;
+- warm/repeated mean response: 27.61 ms;
+- warm/repeated p95 response: 51.03 ms;
+- first uncached maximum response: 483.15 ms;
+- working set: 359.90 MiB.
 
-Cold start and p95 remain below the provisional 10-second and 500-millisecond
-targets. A paired ordering toggle changed p95 by about 8 ms while mean and
-maximum latency were effectively unchanged; this single-machine difference is
-too noisy to attribute. Memory and all timings must be repeated on the
-organizer's machine.
+An instrumented full replay took 90.26 seconds after 9.80 seconds startup and
+recorded 901 FTS cache hits versus 809 misses. Cold start and the observed
+uncached maximum remain below provisional 10-second and 500-millisecond targets,
+but memory and timings must be repeated on the organizer's machine. See
+[differentiation.md](differentiation.md) for like-for-like comparisons.
 
 ## User-interaction considerations
 
@@ -147,7 +148,8 @@ organizer's machine.
 ## Findings and trade-offs
 
 The largest gains came from stateful clarification, capped popularity, category
-coverage, unseen-first exposure, and reranking the complete bounded union. A
+coverage, evidence-gated structural retrieval, unseen-first exposure, and
+reranking the complete bounded union. A
 category-popularity route improved recall and time-to-hit but initially reduced
 MRR, demonstrating that coverage and first-list precision must be tuned jointly.
 
@@ -179,4 +181,6 @@ public ASIN would overfit. Remaining engineering and release actions are kept in
 the repository-level [TODO.md](../TODO.md).
 
 Detailed experiments are in [findings.md](findings.md); prioritized work and
-alternative implementations are in [TODO.md](../TODO.md).
+alternative implementations are in [TODO.md](../TODO.md). The system's measured
+advantages and disadvantages are summarized in
+[differentiation.md](differentiation.md).

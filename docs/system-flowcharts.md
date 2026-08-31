@@ -25,6 +25,7 @@ optional semantic path is labelled so it is not mistaken for the offline default
 flowchart LR
     Catalog[(Frozen 50k-product<br/>catalog JSONL)] --> CatalogStore[CatalogStore<br/>records + SQLite FTS5]
     CatalogStore --> Registry[CatalogAttributeRegistry<br/>values + priors + price quantiles]
+    CatalogStore --> Structure[CatalogStructureIndex<br/>compact category buckets]
     PublicSet[(Public sessions)] --> Evaluator[Local evaluator]
 
     Evaluator -->|reset with profile| SessionStore[SessionStore]
@@ -40,9 +41,12 @@ flowchart LR
 
     Active --> Planner[RetrievalPlanner]
     Planner --> Generators[Five lexical generators]
+    Planner --> StructuralGate{Positive preference<br/>available?}
+    StructuralGate -->|yes| Structure
     CatalogStore --> Generators
     Registry --> Interpreter
     Generators --> Fusion[Weighted RRF]
+    Structure --> Fusion
     Fusion --> Assessment[RetrievalAssessment]
     Fusion --> Reranker[LightweightReranker]
     Active --> Reranker
@@ -88,6 +92,9 @@ flowchart TD
     F1 --> G[(products dictionary)]
     F2 --> H[(SQLite FTS5 products_fts)]
     F3 --> H
+    F2 --> P[CatalogStructureIndex]
+    P --> P1[Two most-specific<br/>safe category segments]
+    P1 --> P2[One bucket membership<br/>per product ID]
     H --> I[(FTS5 vocabulary<br/>document frequencies)]
     F4 --> J[(Popularity ordering)]
     F3 --> O[CatalogAttributeRegistry]
@@ -99,6 +106,10 @@ flowchart TD
 
     G --> K[Exact ID validation and metadata lookup]
     H --> L[BM25 candidate search]
+    H --> Q[Per-agent 256-entry<br/>immutable query cache]
+    P2 --> R[Exact/contained/suffix<br/>category resolution]
+    R --> S[Phrase and token coverage<br/>plus popularity route]
+    G --> T[Per-agent 4096-entry<br/>product token-view cache]
     I --> M[Rare-term selection and IDF]
     J --> N[Category-popular route and safe fallback]
 ```
@@ -112,6 +123,10 @@ Technical behavior:
   catalog phrases remain available as searchable evidence.
 - The FTS table indexes title, categories, features, details, store, and
   description separately. BM25 field weights therefore vary by retrieval route.
+- Structural buckets are derived only from catalog categories and never replace
+  the FTS index. Missing or unresolved structure returns no additional route.
+- Query and token-view caches are bounded per `CatalogStore`, so a long-running
+  process neither shares counters nor retains old agent instances globally.
 - Duplicate or empty `parent_asin` values fail during startup because exact ID
   equality is the scoring boundary.
 
@@ -354,18 +369,23 @@ flowchart TD
     B --> H3[Category relevance route<br/>pool up to 800]
     H3 --> H4[Category popularity route]
     E --> H5[Constraint route<br/>AND then OR fallback]
+    A --> S{At least one positive<br/>preference phrase?}
+    S -->|yes| H6[Structural route<br/>safe category bucket]
+    S -->|no| I
 
     G --> H1
     G --> H2
     G --> H3
     G --> H4
     G --> H5
+    G --> H6
 
-    H1 --> I[Five ranked lists<br/>up to 160 each]
+    H1 --> I[Five or six ranked lists<br/>up to 160 each]
     H2 --> I
     H3 --> I
     H4 --> I
     H5 --> I
+    H6 --> I
     I --> J[Weighted Reciprocal Rank Fusion]
     J --> K[Bounded candidate union]
 ```
@@ -380,15 +400,17 @@ route_weight = focus_score × focused_weight
              + (1 - focus_score) × exploratory_weight
 ```
 
-All cheap routes still run. Focus changes their influence rather than selecting
-one brittle route. Field-specific BM25 weights make the same catalog index act
-as several candidate generators.
+All five FTS routes still run. Focus changes their influence rather than
+selecting one brittle route. Field-specific BM25 weights make the same catalog
+index act as several candidate generators. The structural route is additive and
+joins only after a preference phrase makes its family ordering discriminative;
+failure to resolve a category leaves the FTS ensemble unchanged.
 
 ## 8. Fusion, assessment, and reranking
 
 ```mermaid
 flowchart TD
-    A[Five ranked lists] --> B[CandidateEvidence per ASIN]
+    A[Five or six ranked lists] --> B[CandidateEvidence per ASIN]
     B --> C[Record generator ranks<br/>and raw BM25 scores]
     C --> D[Weighted RRF score]
 

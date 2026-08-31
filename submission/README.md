@@ -24,6 +24,11 @@ continues to return valid recommendations.
 The complete runtime class map and per-class purpose notes are in
 [`../docs/class-diagrams.md`](../docs/class-diagrams.md).
 
+The default deterministic runtime combines five SQLite FTS5 candidate routes
+with one positive-evidence-gated catalog-structural route, weighted RRF, and a
+bounded lightweight reranker. The optional model is not required for the
+reported score and cannot generate product identifiers.
+
 ## Run and test
 
 From the repository root:

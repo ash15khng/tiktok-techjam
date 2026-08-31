@@ -10,6 +10,7 @@ Project documentation:
 - Full architecture, module boundaries, and five-person workstream map: [`docs/architecture.md`](docs/architecture.md)
 - Implementation boundaries and canonical commands: [`docs/implementation.md`](docs/implementation.md)
 - Measured implementation behavior: [`docs/findings.md`](docs/findings.md)
+- Comparative score, latency, memory, and cost trade-offs: [`docs/differentiation.md`](docs/differentiation.md)
 - Leakage-resistant train/validation/holdout protocol: [`docs/evaluation-methodology.md`](docs/evaluation-methodology.md)
 - Complete runtime class diagrams: [`docs/class-diagrams.md`](docs/class-diagrams.md)
 - Prioritized follow-up work and alternatives: [`TODO.md`](TODO.md)

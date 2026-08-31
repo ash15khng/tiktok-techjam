@@ -14,6 +14,7 @@ message + Active State
     -> contextual short-answer resolution from the last question
     -> focused/exploratory route weighting
     -> field, title, category, category-popularity, and constraint FTS retrieval
+    -> positive-evidence-gated catalog category-bucket retrieval
     -> weighted Reciprocal Rank Fusion
     -> evidence, profile, and capped-popularity reranking
     -> unseen-first ordering, reset when intent changes
@@ -69,16 +70,16 @@ The unmodified official evaluator currently reports:
 
 | Metric | Baseline | Current code | Earlier reference |
 |---|---:|---:|---:|
-| Hit Rate@10 | 0.125 | 0.990 | 0.995 |
-| MRR | 0.068 | 0.657026 | 0.635746 |
-| MTTC | 9.81 | 2.550 | 2.245 |
-| TechnicalScore | 0.106710 | 0.861108 | 0.863324 |
+| Hit Rate@10 | 0.125 | 0.995 | 0.990 |
+| MRR | 0.068 | 0.667556 | 0.657026 |
+| MTTC | 9.81 | 2.335 | 2.550 |
+| TechnicalScore | 0.106710 | 0.871067 | 0.861108 |
 
-The current-code result preserves Hit Rate and MTTC from the preceding
-generalized checkpoint while improving MRR through ordering that cannot change
-Top-10 membership. The earlier reference predates the generalization changes;
-its aggregate score is lower than the current score but its MTTC is still better. Neither
-column estimates private-set performance. New work used four
+The current code adds a compact catalog-structural candidate route after one
+positive preference is known. Relative to the earlier reference it gains one
+public hit, improves MRR, and moves the average first hit earlier. The route does
+not hard-filter FTS results and leaves missing metadata neutral. Neither column
+estimates private-set performance. New work used four
 target/title-family-disjoint working folds; the fifth public partition had
 already been opened in an earlier release replay and is therefore compatibility
 data, not an independent test. See
@@ -86,8 +87,9 @@ data, not an independent test. See
 audit measured 2.45 s startup and 265 ms p95 before the catalog registry;
 current feasibility measurements and caveats are in [findings.md](findings.md).
 The retained full-union rerank and broad clarification recovery improved recall
-and first-hit turn. The new frozen-membership stage improves first-list ordering
-without changing target membership or first-hit turn.
+and first-hit turn. The frozen-membership stage improves first-list ordering
+without changing target membership. The structural route improves candidate
+membership while an evidence gate protects vague Browsing precision.
 
 ## Semantic model status
 
@@ -120,4 +122,5 @@ are explicit in `submission/src/config.py`. Each comment records the effect of
 raising or lowering the value and the experiment, if any, supporting it.
 
 See [findings.md](findings.md) for measured behavior and [TODO.md](../TODO.md) for
-remaining work and alternatives.
+remaining work and alternatives. [differentiation.md](differentiation.md)
+documents comparative score, memory, latency, cost, and product trade-offs.

@@ -20,14 +20,14 @@ LLM disabled.
 
 | Metric | Published starter | Shopping Copilot |
 |---|---:|---:|
-| Hit Rate@10 | 0.125 | **0.990** |
-| MRR | 0.068034 | **0.657026** |
-| MTTC | 9.81 turns | **2.550 turns** |
-| Efficiency | 0.119 | **0.845** |
-| TechnicalScore | 0.106710 | **0.861108** |
+| Hit Rate@10 | 0.125 | **0.995** |
+| MRR | 0.068034 | **0.667556** |
+| MTTC | 9.81 turns | **2.335 turns** |
+| Efficiency | 0.119 | **0.8665** |
+| TechnicalScore | 0.106710 | **0.871067** |
 
 These are public-development results, not a claim about the private 800-session
-evaluation. This current generalized implementation misses two public sessions.
+evaluation. This current generalized implementation misses one public session.
 
 ## The product experience
 
@@ -85,9 +85,12 @@ cannot invent product IDs, choose the final ranking, or override explicit facts.
 
 ### Several weak signals become one robust ranking
 
-Five inexpensive candidate routes look at different evidence: full fields,
+Six inexpensive candidate routes look at different evidence: full fields,
 titles, focused constraints, category relevance, and category-conditioned
-popularity. Weighted Reciprocal Rank Fusion combines their candidates, then a
+popularity, plus a conservative catalog-category bucket. The structural route
+joins only after the customer supplies a positive preference, preventing generic
+category popularity from dominating vague Browsing turns. Weighted Reciprocal
+Rank Fusion combines the candidates, then a
 lightweight reranker scores the complete bounded union using coverage, phrase
 matches, constraints, popularity, profile overlap, and exclusions. The selected
 Top 10 is then frozen before a bounded ordering pass, so a weak tie-break can
@@ -106,7 +109,7 @@ Customer message + anonymized profile + current session state
               Typed Active State with provenance
                               |
                               v
-       Five lexical candidate generators (SQLite FTS5)
+      Five FTS generators + gated catalog-structural generator
                               |
                               v
           Weighted RRF -> full-union lightweight reranker
@@ -131,10 +134,10 @@ offline result intact.
 
 | Scenario | Sessions | Hit Rate@10 | MRR | MTTC |
 |---|---:|---:|---:|---:|
-| Buying | 80 | 0.9875 | 0.653780 | 1.925000 |
-| Browsing | 80 | 1.0000 | 0.623943 | 2.512500 |
-| Intent Override | 30 | 0.966667 | 0.661799 | 4.266667 |
-| Boundary | 10 | 1.0000 | 0.933333 | 2.700000 |
+| Buying | 80 | 1.0000 | 0.650585 | 1.525000 |
+| Browsing | 80 | 1.0000 | 0.654315 | 2.487500 |
+| Intent Override | 30 | 0.966667 | 0.659524 | 4.000000 |
+| Boundary | 10 | 1.0000 | 0.933333 | 2.600000 |
 
 A separate 14-case natural-language stress suite uses catalog targets outside
 the public 200. The deterministic system reaches 0.857143 Hit Rate. An offline
@@ -144,13 +147,21 @@ measured result, so paid semantics remains disabled by default.
 
 ## Performance and safety
 
-Latest local measurements over a 40-request deterministic first-turn audit:
+Latest local measurements over a 40-request deterministic audit with two
+repeated request shapes:
 
-- 8.07 s catalog startup;
-- 272 ms mean response time;
-- 312 ms p95 response time;
-- 347 MiB peak working set; and
+- 9.35 s catalog startup;
+- 27.61 ms warm/repeated mean response time;
+- 51.03 ms warm/repeated p95 response time;
+- 483.15 ms maximum, representing the uncached first turn;
+- 359.90 MiB working set; and
 - zero model tokens and $0 marginal API cost on the canonical public run.
+
+An instrumented complete evaluator replay took 90.26 seconds after a separate
+9.80-second startup. These are machine-local feasibility figures, not a
+judging-host latency guarantee. See
+[`docs/differentiation.md`](docs/differentiation.md) for the like-for-like
+strengths, weaknesses, and resource comparison.
 
 The runtime never reads labels, evaluator internals, hidden intent cards, raw
 reviews, or user identities. Missing catalog metadata remains unknown rather
@@ -197,6 +208,7 @@ when reporting results.
 | Full technical architecture | [`docs/architecture.md`](docs/architecture.md) |
 | End-to-end and component flowcharts | [`docs/system-flowcharts.md`](docs/system-flowcharts.md) |
 | Experiments, including failures | [`docs/findings.md`](docs/findings.md) |
+| Differentiation and measured trade-offs | [`docs/differentiation.md`](docs/differentiation.md) |
 | LLM boundaries and measured behavior | [`docs/llm-integration.md`](docs/llm-integration.md) |
 
 ## What we learned from past TechJam winners
@@ -235,7 +247,8 @@ working execution, technical quality, innovation, problem fit, and impact; the
 ## Current limitations
 
 - Public tuning may not transfer perfectly to the private set.
-- The remaining public miss is a low-volume item in a large lexical tie group.
+- The remaining public miss is an Intent Override case; structural retrieval
+  improves family recall but does not solve every correction/disclosure path.
 - Complex negation and first-class OR constraints need more corpus coverage.
 - The strict function-tool LLM path is mocked but not yet live-validated.
 - Live semantic tests consumed tokens without improving a measured score.

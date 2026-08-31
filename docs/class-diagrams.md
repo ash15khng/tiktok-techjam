@@ -105,9 +105,18 @@ classDiagram
         +attributes: CatalogAttributeRegistry
         +get(parent_asin) ProductRecord
         +search(terms, weights, limit) list
+        +structural_search(categories, preferences, limit) list
+        +prepare_structure() CatalogStructureIndex
+        +product_token_view(parent_asin) tuple
+        +cache_diagnostics() dict
         +popular(limit) tuple
         +rare_terms(terms, limit) tuple
         +inverse_document_frequency(terms) dict
+    }
+    class CatalogStructureIndex {
+        +search(category_phrases, preference_phrases, limit) list
+        -resolve_members(category_phrases) tuple
+        -merge_members(keys) tuple
     }
     class AttributeSpec {
         <<frozen_dataclass>>
@@ -136,7 +145,10 @@ classDiagram
 
     CatalogStore "1" *-- "many" ProductRecord : normalizes and indexes
     CatalogStore *-- CatalogAttributeRegistry : derives after load
+    CatalogStore *-- CatalogStructureIndex : builds when enabled
     CatalogStore ..> CatalogSearchResult : returns
+    CatalogStructureIndex --> ProductRecord : reads frozen evidence
+    CatalogStructureIndex ..> CatalogSearchResult : returns route
     CatalogAttributeRegistry --> ProductRecord : derives values from
     CatalogAttributeRegistry ..> AttributeSpec : uses schema
     AttributeValueResolver <|.. EmptyAttributeResolver : implements
@@ -150,7 +162,12 @@ Use notes:
 - `CatalogSearchResult` is the minimal result returned by an individual SQLite
   FTS or popularity route before cross-route fusion.
 - `CatalogStore` owns the in-memory SQLite FTS5 index, normalized records,
-  document-frequency helpers, valid IDs, and catalog popularity ordering.
+  document-frequency helpers, valid IDs, catalog popularity ordering, and
+  per-agent bounded query/token caches.
+- `CatalogStructureIndex` groups every product once by its most-specific safe
+  catalog category and produces the optional phrase-coverage route. It is
+  composition, not inheritance: the store owns it and supplies shared token
+  views.
 - `AttributeSpec` defines one question-capable field and how it maps to catalog
   detail keys; the instances are module-level immutable schema data.
 - `AttributeValueResolver` lets interpretation depend on catalog knowledge
@@ -494,7 +511,7 @@ classDiagram
     RetrievalPlanner --> AgentConfig : focus and route weights
     RetrievalPlanner ..> ActiveState : reads
     RetrievalPlanner ..> RetrievalPlan : produces
-    LexicalRetriever --> CatalogStore : five searches
+    LexicalRetriever --> CatalogStore : five FTS + optional structural route
     LexicalRetriever --> AgentConfig : depth limits
     LexicalRetriever ..> ActiveState : query terms
     LexicalRetriever ..> RetrievalPlan : route limit
@@ -526,7 +543,9 @@ Use notes:
 - `RetrievalPlanner` converts accumulated evidence into a soft focused versus
   exploratory blend rather than assigning a permanent scenario label.
 - `LexicalRetriever` runs field, title, category, category-popularity, and
-  focused-constraint candidate generators against the same frozen store.
+  focused-constraint candidate generators against the same frozen store. After
+  one positive preference, it also requests the catalog-structural route; an
+  unresolved category returns no extra list.
 - `LightweightReranker` combines normalized RRF, IDF coverage, exact phrases,
   capped profile/popularity evidence, budget fit, and exclusion penalties.
 - `FrozenTopKOrderer` operates after relevance and exposure ordering. It can
