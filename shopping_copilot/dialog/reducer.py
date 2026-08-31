@@ -31,10 +31,11 @@ class StateReducer:
 
         is_override_turn = "override" in intent_frame.dialogue_acts
 
-        # If override is detected without specific slot targets, clear earlier soft preferences
-        if is_override_turn and not any(s.operation == "replace" for s in intent_frame.slot_updates):
-            # Deactivate earlier soft constraints
-            constraints = [c for c in constraints if c.strength == "hard"]
+        # If override is detected, reset prior constraints and exclusions
+        if is_override_turn:
+            constraints = []
+            exclusions = []
+            any_attributes = set()
 
         for update in intent_frame.slot_updates:
             attr = update.attribute

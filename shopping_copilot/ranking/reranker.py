@@ -111,17 +111,35 @@ class LightweightReranker:
                 weight_scale = max(0.02, 0.08 - 0.015 * len(all_constraints))
                 profile_boost = (matching_prefs / len(request.profile_preferences)) * weight_scale
 
+            # Dynamic weighting based on constraint volume
+            num_c = len(all_constraints)
+            if num_c >= 2:
+                w_rrf = 0.15
+                w_sup = 0.50
+                w_phrase = 0.25
+                w_pop = 0.10
+            elif num_c == 1:
+                w_rrf = 0.30
+                w_sup = 0.40
+                w_phrase = 0.20
+                w_pop = 0.10
+            else:
+                w_rrf = 0.50
+                w_sup = 0.30
+                w_phrase = 0.15
+                w_pop = 0.05
+
             # Combined final score
             final_score = (
-                0.55 * ev.rrf_score
-                + 0.30 * normalized_support
-                + 0.10 * raw_phrase_match
-                + 0.05 * popularity
+                w_rrf * ev.rrf_score
+                + w_sup * normalized_support
+                + w_phrase * raw_phrase_match
+                + w_pop * popularity
                 + profile_boost
             )
 
             # Contradiction penalty scale
-            hard_penalty = 0.35 * hard_contra_ratio
+            hard_penalty = 0.40 * hard_contra_ratio
             soft_penalty = 0.10 * soft_contra_ratio
             adjusted_score = max(0.0, final_score - hard_penalty - soft_penalty)
 

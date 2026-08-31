@@ -322,9 +322,24 @@ COMMON_EXCLUDED_ALIASES = frozenset([
     "sole", "key", "work", "looking", "need", "prefer", "requirement", "options", "right", "specific",
     "quality", "design", "good", "great", "best", "like", "matter", "matters", "well", "all", "soft",
     "measures", "approximately", "long", "free", "pure", "true", "plus", "new", "original",
+    "package", "dimensions", "inches", "pounds", "department", "model", "asin",
+    "m", "s", "t", "d", "ll", "ve", "re", "am", "im", "dont", "cant", "wont", "didnt",
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "zero",
 ])
 
-VALID_SINGLE_LETTER_SIZES = frozenset(["s", "m", "l", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
+
+ATTRIBUTE_PRIORITY = {
+    Attribute.MATERIAL: 10,
+    Attribute.COLOR: 9,
+    Attribute.CATEGORY: 8,
+    Attribute.SIZE: 7,
+    Attribute.FEATURE: 6,
+    Attribute.USE_CASE: 5,
+    Attribute.STYLE: 4,
+    Attribute.BUDGET: 3,
+    Attribute.BRAND: 2,
+    Attribute.OTHER: 1,
+}
 
 
 class CatalogTrie:
@@ -341,10 +356,9 @@ class CatalogTrie:
         # Filter single tokens that are pronouns, stopwords, or generic noise
         if len(tokens) == 1:
             tok = tokens[0].lower()
+            if len(tok) <= 2 and tok not in ("xl", "xs", "pu", "uv", "oz", "3d"):
+                return
             if tok in COMMON_EXCLUDED_ALIASES:
-                if attribute != Attribute.SIZE or tok not in VALID_SINGLE_LETTER_SIZES:
-                    return
-            if len(tok) <= 1 and (attribute != Attribute.SIZE or tok not in VALID_SINGLE_LETTER_SIZES):
                 return
 
         curr = self.root
@@ -370,9 +384,9 @@ class CatalogTrie:
                 if tok in curr.children:
                     curr = curr.children[tok]
                     if curr.matches:
-                        # Grab best matching attribute
-                        for attr, canonical in curr.matches.items():
-                            longest_match = (attr, canonical, j)
+                        # Grab best matching attribute by domain priority
+                        best_attr = max(curr.matches.keys(), key=lambda a: ATTRIBUTE_PRIORITY.get(a, 0))
+                        longest_match = (best_attr, curr.matches[best_attr], j)
                 else:
                     break
 

@@ -46,18 +46,20 @@ BUDGET_GTE_RE = re.compile(
 
 # Size patterns
 ALPHA_SIZE_RE = re.compile(
-    r"\b(?:size\s+)?(xxs|xs|small|medium|large|xl|xxl|2xl|3xl|4xl|plus\s+size|one\s+size)\b",
+    r"\b(?:size\s*[:=]?\s*|in\s+size\s+)?(xxs|xs|small|medium|large|xl|xxl|2xl|3xl|4xl|plus\s+size|one\s+size)\b"
+    r"|\b(?:size\s*[:=]?\s*)(s|m|l)\b",
     re.IGNORECASE,
 )
 
 NUMERIC_SIZE_RE = re.compile(
-    r"\b(?:size\s+)?(\d{1,2}(?:\.5)?)\s*(wide|narrow|regular|wide\s+width|narrow\s+width)?(?!\.\d)",
+    r"\b(?:size|sz|shoe\s+size|waist|width|length)\s*[:=]?\s*(\d{1,2}(?:\.5)?)(?:\s+(wide|narrow|regular|wide\s+width|narrow\s+width))?\b"
+    r"|\b(\d{1,2}(?:\.5)?)\s+(wide|narrow|regular|wide\s+width|narrow\s+width)\b",
     re.IGNORECASE,
 )
 
 SIZE_RANGE_RE = re.compile(
-    r"\b(?:size\s+)?(?:between\s+(\d{1,2}(?:\.5)?)\s+(?:and|to|-)\s+(\d{1,2}(?:\.5)?)"
-    r"|(\d{1,2}(?:\.5)?)\s*-\s*(\d{1,2}(?:\.5)?))(?!\.\d)",
+    r"\b(?:size|sz)\s*(?:between\s+(\d{1,2}(?:\.5)?)\s+(?:and|to|-)\s+(\d{1,2}(?:\.5)?)"
+    r"|(\d{1,2}(?:\.5)?)\s*-\s*(\d{1,2}(?:\.5)?))\b",
     re.IGNORECASE,
 )
 
@@ -261,7 +263,10 @@ def extract_size_slots(
 
     # Check alpha sizes
     for match in ALPHA_SIZE_RE.finditer(text):
-        size_str = match.group(1).lower().strip()
+        size_raw = match.group(1) or match.group(2)
+        if not size_raw:
+            continue
+        size_str = size_raw.lower().strip()
         # Canonicalize common abbreviations
         norm_map = {
             "small": "s",
@@ -287,28 +292,35 @@ def extract_size_slots(
         )
         return updates
 
-    # Check numeric sizes with explicit keyword "size"
-    numeric_kw_re = re.compile(r"\bsize\s+(\d{1,2}(?:\.5)?)(?:\s*(wide|narrow))?\b", re.IGNORECASE)
-    for match in numeric_kw_re.finditer(text):
-        val = match.group(1)
-        width = match.group(2)
-        norm_vals = (f"{val} {width}".lower().strip(),) if width else (val,)
-        updates.append(
-            SlotUpdate(
-                attribute=Attribute.SIZE,
-                operation="set",
-                relation=Relation.EQ,
-                normalized_values=norm_vals,
-                raw_span=match.group(0),
-                char_span=match.span(),
-                strength="hard",
-                explicitness="explicit",
-                confidence=config.confidence_numeric_rule,
-                provenance="numeric_rule",
-                source_turn=turn,
+    # Check numeric sizes
+    for match in NUMERIC_SIZE_RE.finditer(text):
+        val = None
+        width = None
+        for i in range(1, match.re.groups + 1):
+            g = match.group(i)
+            if g is not None:
+                if re.match(r"^\d", g):
+                    val = g
+                elif g.lower() in ("wide", "narrow", "regular", "wide width", "narrow width"):
+                    width = g
+        if val is not None:
+            norm_vals = (f"{val} {width}".lower().strip(),) if width else (val,)
+            updates.append(
+                SlotUpdate(
+                    attribute=Attribute.SIZE,
+                    operation="set",
+                    relation=Relation.EQ,
+                    normalized_values=norm_vals,
+                    raw_span=match.group(0),
+                    char_span=match.span(),
+                    strength="hard",
+                    explicitness="explicit",
+                    confidence=config.confidence_numeric_rule,
+                    provenance="numeric_rule",
+                    source_turn=turn,
+                )
             )
-        )
-        return updates
+            return updates
 
     return updates
 

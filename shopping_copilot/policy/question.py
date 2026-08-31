@@ -83,64 +83,15 @@ class QuestionPolicy:
                 reason_codes=("no_eligible_attributes",),
             )
 
-        # 3. Calculate partition value / information gain across top-50 candidates
+        # 3. Select next attribute to clarify based on shopping domain priority
         best_attr: str | None = None
-        best_gain: float = -1.0
-        candidate_sample = candidate_evidence[:50]
-
-        for attr_str in eligible:
-            values: list[str] = []
-            for ev in candidate_sample:
-                record = self.catalog_index.get_product(ev.parent_asin)
-                if not record:
-                    continue
-                if attr_str == "budget":
-                    if record.price.kind != "unknown" and record.price.lower is not None:
-                        # Bucket prices: <25, 25-50, 50-100, >100
-                        p = record.price.lower
-                        if p < 25:
-                            values.append("budget_under_25")
-                        elif p < 50:
-                            values.append("budget_25_to_50")
-                        elif p < 100:
-                            values.append("budget_50_to_100")
-                        else:
-                            values.append("budget_over_100")
-                elif attr_str == "category":
-                    if record.categories:
-                        values.append(record.categories[-1].lower())
-                else:
-                    attr_vals = record.attributes.get(attr_str)
-                    if attr_vals:
-                        values.extend(list(attr_vals))
-
-            if not values:
-                continue
-
-            # Compute coverage and Gini
-            coverage = len(values) / max(len(candidate_sample), 1)
-            counts = Counter(values)
-            total = len(values)
-            gini = 1.0 - sum((cnt / total) ** 2 for cnt in counts.values())
-
-            # Information gain = Gini * coverage
-            gain = gini * min(1.0, coverage)
-            if gain > best_gain:
-                best_gain = gain
-                best_attr = attr_str
-
-        # If gain is negligible, fall back to generalized domain attribute priority
-        if best_gain < 0.05:
-            # Domain attribute priority tailored for apparel/fashion/shopping
-            priority_order = (
-                "material", "feature", "style", "color", "brand",
-                "use_case", "size", "budget", "other",
-            )
-            for fallback_candidate in priority_order:
-                if fallback_candidate in eligible:
-                    best_attr = fallback_candidate
-                    best_gain = 0.05
-                    break
+        priority_order = (
+            "material", "color", "feature", "style", "use_case", "size", "budget", "other",
+        )
+        for attr_cand in priority_order:
+            if attr_cand in eligible:
+                best_attr = attr_cand
+                break
 
         if best_attr is not None:
             question_text = ATTRIBUTE_QUESTIONS.get(
@@ -150,7 +101,7 @@ class QuestionPolicy:
                 ask_attribute=best_attr,
                 message=f"I found some initial options. {question_text}",
                 recommendations=top_asins,
-                reason_codes=(f"clarify_{best_attr}", f"gain_{best_gain:.3f}"),
+                reason_codes=(f"clarify_{best_attr}",),
             )
 
         return ActionDecision(

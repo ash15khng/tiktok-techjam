@@ -22,6 +22,8 @@ from shopping_copilot.understanding.models import (
     SlotUpdate,
 )
 from shopping_copilot.understanding.rules import (
+    EXPLORATION_RE,
+    INDIFFERENCE_RE,
     detect_dialogue_acts,
     determine_modality_strength,
     extract_budget_slots,
@@ -229,8 +231,8 @@ class MessageInterpreter:
                 for s in slot_updates
             ):
                 continue
-            # Inside coarse category span, ignore brand/style/use_case false triggers
-            if attr in (Attribute.BRAND, Attribute.STYLE, Attribute.USE_CASE) and any(
+            # Inside coarse category span, ignore any non-category attribute triggers (e.g. snow, winter)
+            if attr != Attribute.CATEGORY and any(
                 s.provenance == "coarse_category"
                 and s.char_span[0] <= char_span[0]
                 and char_span[1] <= s.char_span[1]
@@ -277,16 +279,25 @@ class MessageInterpreter:
         if not is_indifference:
             candidate_items = split_conjunction_items(raw_message)
             for item_phrase in candidate_items:
+                if EXPLORATION_RE.search(item_phrase) or INDIFFERENCE_RE.search(item_phrase):
+                    continue
+                clean_item = re.sub(
+                    r"^(?:i'm\s+looking\s+for|a\s+key\s+requirement\s+is\s*:?|for\s+that,?\s+what\s+matters\s+is\s*:?|actually,?\s+(?:please\s+)?ignore\s+my\s+earlier\s+preference\.?|what\s+i\s+need\s+is\s*:?)\s*",
+                    "", item_phrase, flags=re.I
+                ).strip()
+                if not clean_item or EXPLORATION_RE.search(clean_item) or INDIFFERENCE_RE.search(clean_item):
+                    continue
+
                 # Check if this item phrase was already captured by previous steps
                 if any(
-                    item_phrase.lower() in (s.raw_span or "").lower()
-                    or (s.raw_span or "").lower() in item_phrase.lower()
+                    clean_item.lower() in (s.raw_span or "").lower()
+                    or (s.raw_span or "").lower() in clean_item.lower()
                     for s in slot_updates
                 ):
                     continue
 
                 # Check trie scan on this specific phrase
-                item_trie_matches = self.trie.scan(item_phrase)
+                item_trie_matches = self.trie.scan(clean_item)
                 if item_trie_matches:
                     for attr, canonical_val, r_span, c_span in item_trie_matches:
                         if not any(
@@ -311,44 +322,45 @@ class MessageInterpreter:
                     continue
 
                 # If we asked a specific attribute, attempt linking or assign to last_ask
-                target_attr = last_ask or Attribute.FEATURE
-                linked_val, score, amb = self.linker.link_span(item_phrase, target_attr)
-                if linked_val:
-                    slot_updates.append(
-                        SlotUpdate(
-                            attribute=target_attr,
-                            operation="replace" if is_override else "add",
-                            relation=Relation.EQ,
-                            normalized_values=(linked_val,),
-                            raw_span=item_phrase,
-                            char_span=(0, len(raw_message)),
-                            strength=default_strength,
-                            explicitness="explicit",
-                            confidence=score,
-                            provenance="fuzzy",
-                            source_turn=turn,
-                        )
-                    )
-                elif amb:
-                    ambiguities.append(amb)
-                else:
-                    norm_tok = normalize_token(item_phrase)
-                    if norm_tok and len(norm_tok) > 2 and norm_tok not in STOPWORDS:
+                if last_ask is not None:
+                    target_attr = last_ask
+                    linked_val, score, amb = self.linker.link_span(clean_item, target_attr)
+                    if linked_val:
                         slot_updates.append(
                             SlotUpdate(
                                 attribute=target_attr,
                                 operation="replace" if is_override else "add",
-                                relation=Relation.CONTAINS,
-                                normalized_values=(norm_tok,),
-                                raw_span=item_phrase,
+                                relation=Relation.EQ,
+                                normalized_values=(linked_val,),
+                                raw_span=clean_item,
                                 char_span=(0, len(raw_message)),
-                                strength="soft",
-                                explicitness="inferred",
-                                confidence=self.config.confidence_inferred,
-                                provenance="semantic",
+                                strength=default_strength,
+                                explicitness="explicit",
+                                confidence=score,
+                                provenance="fuzzy",
                                 source_turn=turn,
                             )
                         )
+                    elif amb:
+                        ambiguities.append(amb)
+                    else:
+                        norm_tok = normalize_token(clean_item)
+                        if norm_tok and len(norm_tok) > 2 and norm_tok not in STOPWORDS:
+                            slot_updates.append(
+                                SlotUpdate(
+                                    attribute=target_attr,
+                                    operation="replace" if is_override else "add",
+                                    relation=Relation.CONTAINS,
+                                    normalized_values=(norm_tok,),
+                                    raw_span=clean_item,
+                                    char_span=(0, len(raw_message)),
+                                    strength="soft",
+                                    explicitness="inferred",
+                                    confidence=self.config.confidence_inferred,
+                                    provenance="semantic",
+                                    source_turn=turn,
+                                )
+                            )
 
 
         # -------------------------------------------------------------------
