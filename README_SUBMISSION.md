@@ -1,4 +1,4 @@
-# Shopping Copilot submission guide
+# ShopScout submission guide
 
 The canonical submission README now lives inside the organizer-ready package:
 

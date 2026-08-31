@@ -1,4 +1,4 @@
-# 4. Shopping Copilot: AI Conversational Search and Recommendations
+# 4. ShopScout: AI Conversational Search and Recommendations
 
 **Technical Workshop Webinar with Q&A:** 28 August, 4:00 PM to 4:45 PM  
 🔗 [Click here to join the webinar!](https://github.com/TechJam2026/techjam-conversational-search) *(or see official repo)*

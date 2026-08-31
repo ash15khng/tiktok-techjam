@@ -1,1 +1,1 @@
-"""Fast unit tests for Shopping Copilot components."""
+"""Fast unit tests for ShopScout components."""

@@ -1,8 +1,8 @@
-# Shopping Copilot
+# ShopScout
 
 > Ask less. Preserve what the customer means. Surface the target product sooner.
 
-Shopping Copilot is an offline-first conversational shopping agent for the
+ShopScout is an offline-first conversational shopping agent for the
 TechJam 2026 Conversational E-Commerce Search Challenge. It maintains typed
 shopping state, recommends a full Top 10 on every usable turn, and asks one
 clarification only when the answer is likely to improve later rankings.
@@ -32,7 +32,7 @@ joint requirements. Optimizing only one of them can reduce the final score.
 The following results come from the unmodified 200-session public evaluator,
 with the optional LLM disabled:
 
-| Metric | Published starter | Shopping Copilot |
+| Metric | Published starter | ShopScout |
 |---|---:|---:|
 | Hit Rate@10 | 0.125 | **0.995** |
 | MRR | 0.068034 | **0.667556** |
@@ -67,7 +67,7 @@ sessions. The current code misses one public Intent Override session.
 
 ## What differentiates this system
 
-Shopping Copilot is not simply BM25 followed by a chatbot prompt.
+ShopScout is not simply BM25 followed by a chatbot prompt.
 
 - **Conversation is typed state.** Superseded values are retired instead of
   remaining in a concatenated transcript or query.
@@ -94,7 +94,7 @@ A same-machine development audit compared three model-free, catalog-local
 implementations. The alternatives are anonymized here because this document is
 about our runtime, not their source code.
 
-| Measure | Shopping Copilot | Representative A | Representative B |
+| Measure | ShopScout | Representative A | Representative B |
 |---|---:|---:|---:|
 | TechnicalScore | 0.871067 | 0.879331 | 0.914014 |
 | Catalog startup | **9.35 s** | 11.98 s | 15.78 s |
