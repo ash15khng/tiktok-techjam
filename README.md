@@ -1,124 +1,98 @@
-# TechJam Conversational E-Commerce Search Challenge
+# Shopping Copilot
 
-Build an AI shopping agent that asks useful follow-up questions and recommends the customer's hidden target product within at most 10 turns.
+A conversational shopping agent built for the TechJam 2026 Conversational
+E-Commerce Search Challenge.
 
-Project documentation:
+## Project Overview
 
-- Canonical project story, architecture, setup, results, operating disclosures,
-  diagrams, limitations, and reproduction guide:
-  [`submission/README.md`](submission/README.md)
-- Authoritative organizer rules and contracts: [`docs/`](docs/)
-- Submission package entry point: [`submission/agent.py`](submission/agent.py)
+Shopping Copilot is an offline-first conversational agent that finds a
+customer's hidden target product within 10 conversational turns. Given an
+anonymized customer profile and a short message, it asks at most one useful
+clarification per turn and returns a ranked Top 10 of catalog products.
 
-## What You Receive
+The system is fully deterministic by default (Python standard library +
+SQLite FTS5, no model calls, $0 cost) with an optional, strictly gated LLM
+adapter for harder natural-language cases. On the 200-session public
+evaluator it scores:
 
-- A frozen catalog of 50,000 products from the `Clothing_Shoes_and_Jewelry` category of Amazon Reviews 2023.
-- 200 labeled public sessions for local development.
-- A weak BM25 starter agent and deterministic local evaluator.
-- The Agent API contract and scoring rules.
+| Metric | Baseline starter | Shopping Copilot |
+|---|---:|---:|
+| Hit Rate@10 | 0.125 | **0.995** |
+| MRR | 0.068 | **0.668** |
+| MTTC (turns) | 9.81 | **2.34** |
+| TechnicalScore | 0.107 | **0.871** |
 
-The organizer keeps 800 additional sessions private for final evaluation.
+Pipeline: a deterministic message parser turns each customer reply into
+structured intent → a state reducer updates conversation memory → five
+lexical retrieval routes are fused (Reciprocal Rank Fusion) → candidates are
+reranked on term coverage, exact phrase, popularity, and budget fit → a
+value-driven policy decides whether to ask a clarifying question.
 
-## Task
+## Setup and Installation
 
-For each session, your agent receives an anonymized preference profile and a short customer message. Raw user IDs, review text, timestamps, and purchase history are never disclosed. On every turn the agent may:
-
-- ask a natural clarification question in `message` and identify one requested field in `ask_attribute`;
-- return a ranked list of up to 10 catalog `parent_asin` values;
-- do both in the same response.
-
-The session ends when the target product appears in the scored Top 10 or after turn 10. Sessions cover Buying, Browsing, Intent Override, and Boundary behavior.
-
-## Download the Catalog
-
-Download `catalog.jsonl.gz` from the GitHub Release attached to this repository, then run:
+**Requirements:** Python 3.10+, SQLite with FTS5 (bundled in standard
+CPython). No third-party packages needed for the default path.
 
 ```bash
+# 1. Clone the repo
+git clone <repo-url>
+cd tiktok-techjam-sweekang-structural-retrieval
+
+# 2. Get the frozen catalog (not included in the repo)
+#    Download catalog.jsonl.gz + SHA256SUMS from the GitHub Release
+sha256sum --check SHA256SUMS
 gzip -dk catalog.jsonl.gz
 mv catalog.jsonl data/catalog.jsonl
+
+# 3. Install (empty by default — stdlib only)
+python -m pip install -r submission/requirements.txt
 ```
 
-Verify the downloaded file using the published `SHA256SUMS` file.
+Optional LLM adapter: copy `.env.example` to `.env` and set
+`SHOPPING_COPILOT_LLM_ENABLED=1` plus your endpoint/key. It is off by default
+and never required for scoring.
 
-## Run the submission
+## Steps to Reproduce Results
 
-Python 3.10 or later is recommended. The starter uses only the Python standard library.
+From the repository root:
 
 ```bash
-python3 -m evaluator.local_evaluator
+# Run unit + integration tests
+python -m unittest discover -s tests -p "test_*.py"
+
+# Run the hard-language stress suite
+python -m tests.stress.hard_evaluator
+
+# Run the official local evaluator on the 200 public sessions
+python -m evaluator.local_evaluator
 ```
 
-The canonical entry point is `submission/agent.py`; `starter/agent.py` is only a
-compatibility shim for the unmodified organizer evaluator. Do not edit the
-evaluator or public labels when reporting a score. The command writes
-per-session results and aggregate metrics to `results.json`.
+The last command writes `results.json` with per-session results and the
+aggregate Hit Rate@10 / MRR / MTTC / TechnicalScore shown above. The
+organizer-facing entry point is `submission.agent.Agent`;
+`starter/agent.py` is only a compatibility shim for the provided evaluator.
 
-The included weak BM25 starter scores Hit Rate@10 `0.125`, MRR `0.068034`, and
-MTTC `9.81` on the released public set. See `docs/baseline_results.json`.
+To try it interactively, run the included Streamlit UI (`streamlit run
+streamlit_app.py`) to chat with the agent turn by turn in a browser.
 
-## Agent Interface
+## Limitations and Future Improvements
 
-```python
-class Agent:
-    def reset(self, session_id: str, user_profile: dict) -> None:
-        ...
+- **Generalization risk:** weights were tuned on the 200 public sessions;
+  performance on the organizer's 800 private sessions is unverified.
+- **Complex language:** deterministic parsing is conservative on negation,
+  OR-groups, metaphor, and implicit cross-category requests — an LLM rewrite
+  layer showed measurable upside here but wasn't fully validated live.
+- **Popularity bias:** the popularity prior can favor established products
+  over niche ones (bounded so it can't remove valid Top-10 hits, but it does
+  affect ordering).
+- **Latency:** the six-route retrieval ensemble is slower on cold/unique
+  queries than a simpler precomputed lookup would be.
+- **With more time**, we would: live-validate the semantic adapter end to
+  end, explore a lightweight cross-encoder reranker gated behind measured
+  recall gains, and expand the hard-language regression suite.
 
-    def respond(self, session_id: str, user_message: str, turn: int, top_k: int) -> dict:
-        return {
-            "message": "Do you have a material preference?",
-            "ask_attribute": "material",
-            "recommendations": [
-                {"parent_asin": "B000..."},
-                {"parent_asin": "B001..."}
-            ],
-            "usage": {"prompt_tokens": 120, "completion_tokens": 30}
-        }
-```
+## Team Member Contributions
 
-`ask_attribute` is one of `category`, `material`, `color`, `size`, `style`, `brand`, `budget`, `feature`, `use_case`, `other`, or `null`. See `docs/agent_api_contract.json`.
-
-## Technical Metrics
-
-- **Hit Rate@10:** fraction of sessions that find the target within 10 turns.
-- **MRR:** mean reciprocal rank of the target; a miss contributes zero.
-- **MTTC:** mean first-hit turn; a miss is assigned turn 11.
-- **Reported token usage:** prompt and completion tokens returned by the team's model client.
-
-```text
-TechnicalScore = 0.50 × HitRate@10 + 0.30 × MRR + 0.20 × Efficiency
-Efficiency = clip((11 - MTTC) / 10, 0, 1)
-```
-
-`TechnicalScore` is an objective input to the `Technical Execution` assessment. It is not a separate judging criterion and does not represent the entire `Technical Execution` score.
-
-Only exact `parent_asin` equality produces a hit. Core metrics are also reported by scenario.
-
-## Model Choice and Cost
-
-Teams may use any legally accessible LLM API or local model. Teams manage their own credentials and must never commit API keys. Model choice, estimated cost, token usage, and latency must be disclosed. Token usage is a feasibility metric, not part of the core technical score. The organizer does not provide or reimburse model API credits; teams are responsible for any costs incurred through optional external services.
-
-## Files
-
-```text
-data/public_set.jsonl             200 labeled development sessions
-docs/competition_specification.md participant rules and evaluation protocol
-docs/agent_api_contract.json      machine-readable Agent contract
-docs/evaluation_config.json       scoring configuration
-docs/baseline_results.json        reproducible weak-starter reference score
-starter/agent.py                  evaluator compatibility shim
-submission/agent.py               final Agent entry point
-submission/src/                   final implementation modules
-evaluator/local_evaluator.py      public-set simulator and scorer
-```
-
-## Judging and Submission Policy
-
-- Participant submission requirements: `docs/submission_rules.md`
-- Organizer-only final judging controls: `organizer/JUDGING_RUNBOOK.md`
-- Organizer private release checklist: `organizer/private_release_checklist.md`
-- Judging day operations SOP: `organizer/JUDGING_DAY_SOP.md`
-
-## Data Source
-
-The catalog and sessions are derived from Amazon Reviews 2023 by McAuley Lab, UCSD. See `DATA_ATTRIBUTION.md` before using or redistributing the data.
-Sessions are sampled deterministically from the official Clothing 5-core leave-last-out split and joined to the frozen catalog.
+*To be completed — add each member's name and their area of contribution
+(e.g. retrieval/ranking, dialog state, evaluation, UI/demo) before final
+submission.*
