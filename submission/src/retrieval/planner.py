@@ -36,4 +36,9 @@ class RetrievalPlanner:
             name: focus_score * focused[name] + (1.0 - focus_score) * exploratory[name]
             for name in focused
         }
+        if self.config.structural_retrieval_enabled:
+            weights["structural"] = (
+                focus_score * self.config.structural_focused_weight
+                + (1.0 - focus_score) * self.config.structural_exploratory_weight
+            )
         return RetrievalPlan(focus_score, weights, self.config.candidate_depth)

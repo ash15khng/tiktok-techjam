@@ -60,6 +60,15 @@ class AgentConfig:
         ("category", 1.05),
         ("category_popular", 0.95),
     )
+    # Experimental catalog-structural route. Enabling it adds a category-bucket
+    # ranking by exact phrase coverage, token coverage, and popularity. It is
+    # disabled until the target-family and hard-suite gates are complete.
+    structural_retrieval_enabled: bool = False
+    # Raising these values gives structural evidence more influence in RRF;
+    # lowering them preserves the five-route ensemble. Initial values are
+    # engineering guesses and must not ship without an isolated sweep.
+    structural_focused_weight: float = 1.20
+    structural_exploratory_weight: float = 0.90
 
     # Candidate assessment via top-N set overlap.
     # Larger overlap depth measures agreement across a broader result window but

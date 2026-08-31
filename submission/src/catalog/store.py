@@ -17,6 +17,7 @@ from pathlib import Path
 from submission.src.catalog.attributes import CatalogAttributeRegistry
 from submission.src.catalog.models import CatalogSearchResult, ProductRecord
 from submission.src.catalog.normalization import flatten_text, string_values, tokenize
+from submission.src.catalog.structure import CatalogStructureIndex
 
 
 # SQLite BM25 weights: 
@@ -47,6 +48,7 @@ class CatalogStore:
         self._build()
         self.valid_ids = frozenset(self.products)
         self.attributes = CatalogAttributeRegistry(self.products)
+        self._structure: CatalogStructureIndex | None = None
         self._popular = tuple(
             product.parent_asin
             for product in sorted(
@@ -192,6 +194,33 @@ class CatalogStore:
         except sqlite3.OperationalError:
             return []
         return [CatalogSearchResult(str(parent_asin), float(score)) for parent_asin, score in rows]
+
+    def structural_search(
+        self,
+        category_phrases: tuple[str, ...],
+        preference_phrases: tuple[str, ...],
+        *,
+        limit: int,
+    ) -> list[CatalogSearchResult]:
+        """Return one catalog-structural route or ``[]`` when unresolved."""
+
+        return self.prepare_structure().search(
+            category_phrases,
+            preference_phrases,
+            limit=limit,
+        )
+
+    def prepare_structure(self) -> CatalogStructureIndex:
+        """Build the optional structural index once and return it.
+
+        The default five-route agent never pays this startup or memory cost.
+        Enabled configurations call this during agent construction so the first
+        customer turn does not absorb lazy-index latency.
+        """
+
+        if self._structure is None:
+            self._structure = CatalogStructureIndex(self.products)
+        return self._structure
 
     @lru_cache(maxsize=PRODUCT_TEXT_CACHE_SIZE)
     def product_terms(self, parent_asin: str) -> frozenset[str]:

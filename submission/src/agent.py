@@ -54,6 +54,8 @@ class ShoppingAgent:
     ) -> None:
         self.config = config or AgentConfig()
         self.catalog = CatalogStore(catalog_path)
+        if self.config.structural_retrieval_enabled:
+            self.catalog.prepare_structure()
         self.sessions = SessionStore()
         self.semantic_parser = semantic_parser or semantic_parser_from_environment(self.config)
         self.interpreter = MessageInterpreter(

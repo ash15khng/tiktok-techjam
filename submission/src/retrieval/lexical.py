@@ -1,4 +1,4 @@
-"""Generate five inspectable candidate lists from one Active State snapshot."""
+"""Generate inspectable lexical and optional structural candidate lists."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from submission.src.retrieval.models import RetrievalPlan
 
 
 class LexicalRetriever:
-    """Run field, title, category, popularity, and constraint generators."""
+    """Run five lexical generators and an optional structural generator."""
 
     def __init__(self, store: CatalogStore, config: AgentConfig) -> None:
         self.store = store
@@ -74,7 +74,7 @@ class LexicalRetriever:
                 result.parent_asin,
             ),
         )[: plan.generator_limit]
-        return {
+        routes = {
             "field": self.store.search( # search if query terms are in any field
                 query_terms,
                 weights=FIELD_WEIGHTS,
@@ -89,3 +89,10 @@ class LexicalRetriever:
             "category_popular": category_popular,
             "constraint": constraint,
         }
+        if self.config.structural_retrieval_enabled:
+            routes["structural"] = self.store.structural_search(
+                tuple(active.category_phrases),
+                tuple(active.preference_phrases),
+                limit=plan.generator_limit,
+            )
+        return routes
