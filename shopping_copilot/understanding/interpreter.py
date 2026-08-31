@@ -221,9 +221,17 @@ class MessageInterpreter:
         alt_group_id = "alt_grp_1" if has_or else None
 
         for attr, canonical_val, raw_span, char_span in trie_matches:
-            # Check if inside a structured prefix or coarse category already handled
+            # Check if inside a structured prefix
             if any(
-                s.provenance in ("structured_prefix", "coarse_category")
+                s.provenance == "structured_prefix"
+                and s.char_span[0] <= char_span[0]
+                and char_span[1] <= s.char_span[1]
+                for s in slot_updates
+            ):
+                continue
+            # Inside coarse category span, ignore brand/style/use_case false triggers
+            if attr in (Attribute.BRAND, Attribute.STYLE, Attribute.USE_CASE) and any(
+                s.provenance == "coarse_category"
                 and s.char_span[0] <= char_span[0]
                 and char_span[1] <= s.char_span[1]
                 for s in slot_updates
