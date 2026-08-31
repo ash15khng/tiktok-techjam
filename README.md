@@ -4,20 +4,11 @@ Build an AI shopping agent that asks useful follow-up questions and recommends t
 
 Project documentation:
 
-- Judge-oriented project story, results, and quick start: [`README_SUBMISSION.md`](README_SUBMISSION.md)
-- Quick pipeline and technology summary: [`docs/pipeline-summary.md`](docs/pipeline-summary.md)
-- End-to-end and component-level Mermaid flowcharts: [`docs/system-flowcharts.md`](docs/system-flowcharts.md)
-- Full architecture, module boundaries, and five-person workstream map: [`docs/architecture.md`](docs/architecture.md)
-- Implementation boundaries and canonical commands: [`docs/implementation.md`](docs/implementation.md)
-- Measured implementation behavior: [`docs/findings.md`](docs/findings.md)
-- Comparative score, latency, memory, and cost trade-offs: [`docs/differentiation.md`](docs/differentiation.md)
-- Leakage-resistant train/validation/holdout protocol: [`docs/evaluation-methodology.md`](docs/evaluation-methodology.md)
-- Complete runtime class diagrams: [`docs/class-diagrams.md`](docs/class-diagrams.md)
-- Prioritized follow-up work and alternatives: [`TODO.md`](TODO.md)
-- Optional semantic parser setup and expectations: [`docs/llm-integration.md`](docs/llm-integration.md)
-- Lightweight NLP experiment and decision: [`docs/nlp-evaluation.md`](docs/nlp-evaluation.md)
-- Expected real-user conversation behavior: [`docs/interaction-examples.md`](docs/interaction-examples.md)
-- Final implementation report and submission considerations: [`docs/final-report.md`](docs/final-report.md)
+- Canonical project story, architecture, setup, results, operating disclosures,
+  diagrams, limitations, and reproduction guide:
+  [`submission/README.md`](submission/README.md)
+- Authoritative organizer rules and contracts: [`docs/`](docs/)
+- Submission package entry point: [`submission/agent.py`](submission/agent.py)
 
 ## What You Receive
 
