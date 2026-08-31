@@ -116,6 +116,34 @@ class MessageInterpreter:
             )
 
         # -------------------------------------------------------------------
+        # Step 1.5: Coarse Category Intent Pattern ("I'm looking for <CATEGORY>")
+        # -------------------------------------------------------------------
+        cat_match = re.search(
+            r"\b(?:i'm looking for|im looking for|looking for|searching for|want to buy)\s+([a-zA-Z0-9\s&,'-]+?)(?:[.,;]|(?:\s+(?:but|with|style:|material:|color:|brand:|size:|budget:|feature:|for|under|around|my\s+preference))\b|$)",
+            raw_message,
+            re.IGNORECASE,
+        )
+        if cat_match:
+            candidate_cat = cat_match.group(1).strip()
+            candidate_cat = re.sub(r"^\b(?:a|an|the|some)\b\s*", "", candidate_cat, flags=re.IGNORECASE).strip()
+            if candidate_cat and len(candidate_cat) > 2 and candidate_cat.lower() not in STOPWORDS:
+                slot_updates.append(
+                    SlotUpdate(
+                        attribute=Attribute.CATEGORY,
+                        operation="replace" if is_override else "set",
+                        relation=Relation.EQ,
+                        normalized_values=(candidate_cat.lower(),),
+                        raw_span=candidate_cat,
+                        char_span=cat_match.span(1),
+                        strength="hard",
+                        explicitness="explicit",
+                        confidence=0.95,
+                        provenance="coarse_category",
+                        source_turn=turn,
+                    )
+                )
+
+        # -------------------------------------------------------------------
         # Step 2: Handle Structured Prefixes ("color: black", "material: cotton")
         # -------------------------------------------------------------------
         for match in STRUCTURED_PREFIX_RE.finditer(raw_message):
@@ -149,7 +177,7 @@ class MessageInterpreter:
                         strength=default_strength,
                         explicitness="explicit",
                         confidence=self.config.confidence_catalog_exact,
-                        provenance="catalog_exact",
+                        provenance="structured_prefix",
                         source_turn=turn,
                     )
                 )
@@ -176,8 +204,8 @@ class MessageInterpreter:
         alt_group_id = "alt_grp_1" if has_or else None
 
         for attr, canonical_val, raw_span, char_span in trie_matches:
-            # Check if inside a structured prefix already handled
-            if any(s.char_span[0] <= char_span[0] and char_span[1] <= s.char_span[1] for s in slot_updates):
+            # Check if inside a structured prefix already handled (do not block coarse category)
+            if any(s.provenance == "structured_prefix" and s.char_span[0] <= char_span[0] and char_span[1] <= s.char_span[1] for s in slot_updates):
                 continue
 
             # Check if within negation scope

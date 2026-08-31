@@ -128,11 +128,9 @@ class LightweightReranker:
             ev.lightweight_score = round(normalized_support, 4)
             ev.final_score = round(adjusted_score, 4)
 
-            # Hard demotion if hard contradictions exist
-            is_clean = 0 if hard_contras > 0 else 1
-            scored_candidates.append((is_clean, adjusted_score, ev))
+            scored_candidates.append((adjusted_score, ev))
 
-        # Sort: clean items first (descending), then score descending, then ASIN ascending
-        scored_candidates.sort(key=lambda item: (-item[0], -item[1], item[2].parent_asin))
-        return [item[2] for item in scored_candidates[:top_k]]
+        # Sort: score descending, then ASIN ascending
+        scored_candidates.sort(key=lambda item: (-item[0], item[1].parent_asin))
+        return [item[1] for item in scored_candidates[:top_k]]
 
