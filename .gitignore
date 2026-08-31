@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .DS_Store
 .env
+.env.*
+!.env.example
 results.json
 data/catalog.jsonl
 data/releases/
@@ -16,6 +18,12 @@ docs/participant_release_checklist.md
 tests/test_5core_builder.py
 tests/test_organizer_pipeline.py
 *.log
+
+# Local planning, research, generated indexes, and experiment output.
+.local/
+analysis/
+artifacts/
+experiments/
 
 
 # large data files
