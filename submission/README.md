@@ -87,32 +87,6 @@ ShopScout is not simply BM25 followed by a chatbot prompt.
   or break the deterministic fallback.
 - **Failures remain valid responses.** Duplicate turns are idempotent; late
   turns and component exceptions reuse safe recommendations before global fill.
-
-### Comparative trade-offs
-
-A same-machine development audit compared three model-free, catalog-local
-implementations. The alternatives are anonymized here because this document is
-about our runtime, not their source code.
-
-| Measure | ShopScout | Representative A | Representative B |
-|---|---:|---:|---:|
-| TechnicalScore | 0.871067 | 0.879331 | 0.914014 |
-| Catalog startup | **9.35 s** | 11.98 s | 15.78 s |
-| Repeated-request mean | 27.61 ms | **1.47 ms** | 42.97 ms |
-| Repeated-request p95 | 51.03 ms | **3.31 ms** | 72.87 ms |
-| Working set after audit | 359.90 MiB | 478.13 MiB | **257.42 MiB** |
-| Default model/API cost | $0 | $0 | $0 |
-
-Our startup was fastest, memory and warm latency were between the two reference
-implementations, and our public score was lower. Direct precomputed category
-lookups align especially well with the released simulator. Our broader
-multi-route design spends more cold-turn time to preserve free-form retrieval,
-full Top-10 behavior, typed corrections, and safe handling of missing data.
-
-This is a deliberate product/generalization trade-off, not evidence that the
-private score will be higher. The organizer's private set is the only decisive
-comparison.
-
 ## Architecture
 
 ### End-to-end flow
