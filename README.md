@@ -11,19 +11,16 @@ CPython). No third-party packages needed for the default path.
 ```bash
 # 1. Clone the repo
 git clone <repo-url>
-cd tiktok-techjam-sweekang-structural-retrieval
+cd tiktok-techjam
 
 # 2. Get the frozen catalog (not included in the repo)
 #    Download catalog.jsonl.gz + SHA256SUMS from the GitHub Release
 sha256sum --check SHA256SUMS
 gzip -dk catalog.jsonl.gz
 mv catalog.jsonl data/catalog.jsonl
-
-# 3. Install (empty by default — stdlib only)
-python -m pip install -r submission/requirements.txt
 ```
 
-Optional LLM adapter: copy `.env.example` to `.env` and set
+Optional LLM adapter: copy `.env.example` to `.env` (in repo root) and set
 `SHOPPING_COPILOT_LLM_ENABLED=1` plus your endpoint/key. It is off by default
 and never required for scoring.
 
@@ -32,12 +29,6 @@ and never required for scoring.
 From the repository root:
 
 ```bash
-# Run unit + integration tests
-python -m unittest discover -s tests -p "test_*.py"
-
-# Run the hard-language stress suite
-python -m tests.stress.hard_evaluator
-
 # Run the official local evaluator on the 200 public sessions
 python -m evaluator.local_evaluator
 ```
@@ -46,6 +37,8 @@ The last command writes `results.json` with per-session results and the
 aggregate Hit Rate@10 / MRR / MTTC / TechnicalScore shown above. The
 organizer-facing entry point is `submission.agent.Agent`;
 `starter/agent.py` is only a compatibility shim for the provided evaluator.
+
+All Relevant files are in /submission.
 
 To try it interactively, run the included Streamlit UI (`streamlit run
 app.py`) to chat with the agent turn by turn in a browser.

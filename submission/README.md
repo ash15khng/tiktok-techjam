@@ -17,15 +17,77 @@ The agent receives an anonymized profile and a customer message. Within at most
 ten turns, it must place the customer's hidden product among the first ten valid
 catalog `parent_asin` values, preferably at rank one and on an early turn.
 
-The official metrics reward three different outcomes:
+## Requirements and setup
 
-```text
-TechnicalScore = 0.50 × HitRate@10 + 0.30 × MRR + 0.20 × Efficiency
-Efficiency = clip((11 - MTTC) / 10, 0, 1)
+### Requirements
+
+- Python 3.10 or newer;
+- SQLite compiled with FTS5, as included in standard CPython distributions;
+- the verified frozen catalog at `data/catalog.jsonl`;
+- no third-party Python package, model download, GPU, or network for the default
+  scored path.
+
+`submission/requirements.txt` is intentionally empty apart from its explanatory
+comment because the canonical runtime uses the standard library only.
+
+### Catalog setup
+
+Download `catalog.jsonl.gz` and `SHA256SUMS` from the organizer's GitHub Release,
+verify the compressed asset, then place the decompressed file at
+`data/catalog.jsonl`:
+
+```bash
+sha256sum --check SHA256SUMS
+gzip -dk catalog.jsonl.gz
+mv catalog.jsonl data/catalog.jsonl
 ```
 
-This makes candidate recall, ordering quality, and conversation efficiency
-joint requirements. Optimizing only one of them can reduce the final score.
+On Windows, use an equivalent SHA-256 verifier and gzip-capable archive tool.
+Do not edit the catalog or public labels when reporting results.
+
+### Install and verify
+
+From the repository root:
+
+```bash
+python -m evaluator.local_evaluator
+```
+
+The last command writes `results.json`. The canonical organizer-facing class is
+`submission.agent.Agent`; `starter/agent.py` is only the supplied evaluator's
+compatibility import.
+
+## Optional semantic API
+
+Copy `.env.example` to the ignored `.env` file, or point
+`SHOPPING_COPILOT_ENV_FILE` at a secret file outside the repository:
+
+```dotenv
+SHOPPING_COPILOT_LLM_ENABLED=1
+SHOPPING_COPILOT_LLM_MAX_CALLS=16
+SHOPPING_COPILOT_LLM_MODEL=llama3.1:8b
+SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS=6
+SOCLAAS_BASE_URL=https://your-soclaas-gateway.example/v1
+SOCLAAS_API_KEY=replace-locally
+```
+
+Only allow-listed keys are loaded, and operating-system variables take
+precedence over `.env`. Never commit `.env` or an API key.
+
+The adapter sends an HTTPS `POST` to `$SOCLAAS_BASE_URL/responses` with a forced
+strict function tool. It does not use hosted tools, response persistence, or
+`previous_response_id`. Returned operations are length-, schema-, attribute-,
+evidence-, and catalog-grounded locally before they can affect state.
+
+Safeguards:
+
+- disabled unless the enable flag, HTTPS URL, key, and model are present;
+- at most one call per turn, two per session, and 16 per process by default;
+- six-second timeout and no automatic retry loop;
+- successful-result cache to avoid duplicate billed calls;
+- credential-free errors and aggregate-only diagnostics; and
+- complete deterministic fallback for all failures.
+
 
 ## Results
 
@@ -292,80 +354,6 @@ Catalog fields are normalized for lookup but never fabricated. Missing price,
 material, size, color, or style contributes neutral evidence. The anonymized
 profile is a capped soft prior and cannot override the current session.
 
-## Requirements and setup
-
-### Requirements
-
-- Python 3.10 or newer;
-- SQLite compiled with FTS5, as included in standard CPython distributions;
-- the verified frozen catalog at `data/catalog.jsonl`;
-- no third-party Python package, model download, GPU, or network for the default
-  scored path.
-
-`submission/requirements.txt` is intentionally empty apart from its explanatory
-comment because the canonical runtime uses the standard library only.
-
-### Catalog setup
-
-Download `catalog.jsonl.gz` and `SHA256SUMS` from the organizer's GitHub Release,
-verify the compressed asset, then place the decompressed file at
-`data/catalog.jsonl`:
-
-```bash
-sha256sum --check SHA256SUMS
-gzip -dk catalog.jsonl.gz
-mv catalog.jsonl data/catalog.jsonl
-```
-
-On Windows, use an equivalent SHA-256 verifier and gzip-capable archive tool.
-Do not edit the catalog or public labels when reporting results.
-
-### Install and verify
-
-From the repository root:
-
-```bash
-python -m pip install -r submission/requirements.txt
-python -m unittest discover -s tests -p "test_*.py"
-python -m tests.stress.hard_evaluator
-python -m evaluator.local_evaluator
-```
-
-The last command writes `results.json`. The canonical organizer-facing class is
-`submission.agent.Agent`; `starter/agent.py` is only the supplied evaluator's
-compatibility import.
-
-## Optional semantic API
-
-Copy `.env.example` to the ignored `.env` file, or point
-`SHOPPING_COPILOT_ENV_FILE` at a secret file outside the repository:
-
-```dotenv
-SHOPPING_COPILOT_LLM_ENABLED=1
-SHOPPING_COPILOT_LLM_MAX_CALLS=16
-SHOPPING_COPILOT_LLM_MODEL=llama3.1:8b
-SHOPPING_COPILOT_LLM_TIMEOUT_SECONDS=6
-SOCLAAS_BASE_URL=https://your-soclaas-gateway.example/v1
-SOCLAAS_API_KEY=replace-locally
-```
-
-Only allow-listed keys are loaded, and operating-system variables take
-precedence over `.env`. Never commit `.env` or an API key.
-
-The adapter sends an HTTPS `POST` to `$SOCLAAS_BASE_URL/responses` with a forced
-strict function tool. It does not use hosted tools, response persistence, or
-`previous_response_id`. Returned operations are length-, schema-, attribute-,
-evidence-, and catalog-grounded locally before they can affect state.
-
-Safeguards:
-
-- disabled unless the enable flag, HTTPS URL, key, and model are present;
-- at most one call per turn, two per session, and 16 per process by default;
-- six-second timeout and no automatic retry loop;
-- successful-result cache to avoid duplicate billed calls;
-- credential-free errors and aggregate-only diagnostics; and
-- complete deterministic fallback for all failures.
-
 ## Cost, latency, memory, and network disclosure
 
 ### Token prices
@@ -418,51 +406,6 @@ One live compatibility success took approximately 4.2 seconds; another request
 exceeded the earlier four-second timeout. The configured six-second timeout is a
 fallback bound, not a demonstrated p95 service level.
 
-## Evaluation discipline and findings
-
-The public data is development data. Numeric work used four 40-session working
-folds separated by target and normalized-title family. A fifth 40-session
-partition was protected during initial work but later opened for compatibility,
-so it is no longer an independent holdout. The organizer's 800 private sessions
-remain the only unseen score.
-
-The retained structural-route sweep illustrates the selection rule:
-
-| 160-session working variant | Hit Rate | MRR | MTTC | Score | Decision |
-|---|---:|---:|---:|---:|---|
-| Pre-structural reference | 0.987500 | 0.669479 | 2.581250 | 0.862969 | Reference |
-| Ungated structural, 1.20/0.90 | 0.993750 | 0.576017 | 1.975000 | 0.850180 | Reject: rank collapse |
-| Gated structural, 0.50/0.35 | 0.993750 | 0.679100 | 2.468750 | 0.871230 | Useful |
-| Gated structural, 0.80/0.50 | 0.993750 | 0.677517 | 2.356250 | 0.873005 | Retain |
-
-Requiring one positive preference prevented structural popularity from
-dominating vague Browsing turns. Against the preceding working checkpoint, the
-retained variant gained one hit, lost none, moved 19 hits earlier and one later,
-improved 35 target ranks, and worsened 16.
-
-A frozen 14-case language suite uses catalog targets outside all 200 public
-targets. It covers misspellings, implicit needs, short answers, conjunctions,
-metaphors, multi-turn refinement, and corrections:
-
-| System | Hit Rate | MRR | MTTC | Tokens |
-|---|---:|---:|---:|---:|
-| Deterministic retained system | 0.857143 | 0.741071 | 1.357143 | 0 |
-| Offline ideal-rewrite oracle | 1.000000 | 0.766071 | 1.071429 | 0 |
-
-The oracle shows a semantic-rewrite opportunity, not a model result. Live model
-probes consumed tokens without producing an accepted score improvement.
-
-Notable rejected directions:
-
-- an ungated structural route improved timing but collapsed MRR;
-- a separate typed-attribute route duplicated constraint evidence and reduced
-  working score;
-- structured support reranking increased latency and reduced Hit Rate;
-- phrase-rarity ordering added scans without beating the simpler final order;
-- a lightweight spaCy model added startup, memory, and installation cost without
-  grounding shopping-specific short replies; and
-- broader LLM triggering spent tokens on sessions the deterministic system
-  already solved.
 
 ## Example interaction
 
@@ -513,22 +456,6 @@ Start a code trace at `submission/agent.py`, then
 `submission/src/agent.py`. Retrieval enters
 `submission/src/retrieval/lexical.py`; optional HTTP requests are isolated in
 `submission/src/understanding/semantic.py`.
-
-## Contribution disclosure
-
-Git history is the source of truth for attribution. The identities currently
-visible in this repository show:
-
-| Repository identity | Contribution visible in history |
-|---|---|
-| `TechJam2026` | Organizer participant kit, evaluator contract, public data, and competition documents |
-| `ash15khng` | Team-repository setup and conversational evaluation trace scripts |
-| `sweekang` | Submission architecture, conversational state, retrieval/ranking, semantic safeguards, tests, evaluation, and consolidated documentation |
-
-The team has five members, but three additional member identities are not yet
-separately attributable from repository history. Their exact names and delivered
-work must be added before the submission freeze; this README does not invent
-credit where the current evidence is incomplete.
 
 ## Limitations and next measured steps
 
